@@ -1,12 +1,12 @@
 #!/bin/bash
-# Unblocks YouTube and removes the helper. Run as root:
-#   sudo bash ~/.dotfiles/system/block-youtube/uninstall.sh
+# Unblocks every site and removes the helper. Run as root:
+#   sudo bash ~/.dotfiles/system/site-block/uninstall.sh
 
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run me with sudo" >&2; exit 1; }
 
-# Lift the block before removing the tool that lifts it.
-bash "$(dirname "${BASH_SOURCE[0]}")/block-youtube" off
-rm -f /usr/local/bin/block-youtube
+# Lift the blocks before removing the tool that lifts them.
+bash "$(dirname "${BASH_SOURCE[0]}")/site-block" off all
+rm -f /usr/local/bin/site-block
 
-echo "removed; YouTube is unblocked and the bar widget hides itself"
+echo "removed; nothing is blocked and the bar widget hides itself"

@@ -4,32 +4,50 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Bar toggle for the YouTube block in ~/.dotfiles/system/block-youtube.
+// Bar toggles for the site block in ~/.dotfiles/system/site-block.
 //
 // Reading the state needs no privileges; flipping it goes through pkexec, so
 // every toggle raises the shell's polkit dialog. That is deliberate -- a block
 // you can lift with one stray click is not much of a block.
+//
+// The site list comes from the helper's status output, so adding a site there
+// adds a switch here with no change to this file.
 Panel {
   id: root
-  moduleName: "fazzledev.youtube-block"
-  ipcTarget: "fazzledev.youtube-block"
+  moduleName: "fazzledev.site-block"
+  ipcTarget: "fazzledev.site-block"
 
-  readonly property string helper: "/usr/local/bin/block-youtube"
+  readonly property string helper: "/usr/local/bin/site-block"
 
-  // Unknown until the first status read; the widget stays hidden until then,
-  // and for good if the helper is not installed.
-  property bool installed: false
-  property bool blocked: false
+  // [{ name, label, blocked }]. Empty until the first status read; the widget
+  // stays hidden until then, and for good if the helper is not installed.
+  property var sites: []
+  readonly property bool installed: sites.length > 0
+  readonly property int blockedCount: sites.filter(function(s) { return s.blocked }).length
+  readonly property bool allBlocked: installed && blockedCount === sites.length
+  property string pendingSite: ""
   property string lastError: ""
-  readonly property bool busy: toggleProc.running
+  property int cursorIndex: 0
+  property bool cursorActive: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  // Blocked is the resting state, so it recedes; unblocked stands out as a
-  // reminder that it is still off.
-  readonly property color barIconColor: blocked ? Qt.darker(barForeground, 1.55) : urgent
+  // Everything blocked is the resting state, so it recedes; anything unblocked
+  // stands out as a reminder that it is still off.
+  // Brand glyphs for the sites the helper knows; anything added there later
+  // falls back to the shield until it gets one here. The font has no X logo,
+  // so X keeps the bird.
+  readonly property var siteGlyphs: ({ youtube: "󰗃", twitter: "󰕄" })
+  function siteGlyph(name) { return siteGlyphs[name] || "󰕥" }
+  // Unblocked sites show in their brand colour -- Twitter blue for the bird,
+  // since that is the mark on screen. Unknown sites fall back to urgent.
+  readonly property var siteColors: ({ youtube: "#ff0000", twitter: "#1da1f2" })
+  function siteColor(name) { return siteColors[name] || root.urgent }
+
+  readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
+  readonly property color barIconColor: allBlocked ? Qt.darker(barForeground, 1.55) : urgent
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
@@ -39,21 +57,33 @@ Panel {
     if (!statusProc.running) statusProc.running = true
   }
 
-  function setBlocked(on) {
-    if (!installed || busy) return
+  function setBlocked(site, on) {
+    if (!site || toggleProc.running) return
     lastError = ""
-    toggleProc.command = ["pkexec", root.helper, on ? "on" : "off"]
+    pendingSite = site.name
+    toggleProc.command = ["pkexec", root.helper, on ? "on" : "off", site.name]
     toggleProc.running = true
   }
 
+  function flip(index) {
+    var site = sites[index]
+    if (site) setBlocked(site, !site.blocked)
+  }
+
   function applyStatus(raw) {
-    var match = String(raw || "").match(/^blocked\t([01])$/m)
-    if (!match) return
-    installed = true
-    blocked = match[1] === "1"
+    var next = []
+    String(raw || "").split("\n").forEach(function(line) {
+      var f = line.split("\t")
+      if (f.length === 3 && (f[2] === "0" || f[2] === "1")) {
+        next.push({ name: f[0], label: f[1], blocked: f[2] === "1" })
+      }
+    })
+    sites = next
+    if (cursorIndex >= sites.length) cursorIndex = Math.max(0, sites.length - 1)
   }
 
   onOpenedChanged: if (opened) {
+    cursorActive = false
     refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -72,13 +102,14 @@ Panel {
     // failed-to-start warning in the journal every poll.
     command: ["sh", "-c", "[ -x \"$1\" ] || exit 127; exec \"$1\" status", "sh", root.helper]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.applyStatus(text) }
-    onExited: function(exitCode) { if (exitCode !== 0) root.installed = false }
+    onExited: function(exitCode) { if (exitCode !== 0) root.sites = [] }
   }
 
   Process {
     id: toggleProc
     stderr: StdioCollector { id: toggleStderr; waitForEnd: true }
     onExited: function(exitCode) {
+      root.pendingSite = ""
       // 126 is pkexec's "dismissed the dialog" -- not worth an error line.
       if (exitCode !== 0 && exitCode !== 126) {
         root.lastError = String(toggleStderr.text || "").trim() || ("Failed (exit " + exitCode + ")")
@@ -91,7 +122,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰗃"
+    text: root.barGlyph
     foreground: root.barIconColor
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) root.refresh()
@@ -107,12 +138,16 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(200))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(400))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      onActivateRequested: root.setBlocked(!root.blocked)
+      onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
+        root.cursorIndex = Math.max(0, Math.min(root.sites.length - 1, root.cursorIndex + dy))
+      }
+      onActivateRequested: if (root.cursorActive) root.flip(root.cursorIndex)
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -121,49 +156,37 @@ Panel {
         width: parent.width
         spacing: Style.space(12)
 
-        Item {
-          id: header
+        PanelHero {
           width: parent.width
-          implicitHeight: hero.implicitHeight
-
-          PanelHero {
-            id: hero
-            width: parent.width
-            title: "YouTube"
-            meta: root.busy ? "Waiting for authentication…" : (root.blocked ? "Blocked on this computer" : "Not blocked")
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            iconComponent: Component {
-              Text {
-                text: "󰗃"
-                color: root.blocked ? root.dim : root.urgent
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.display
-              }
-            }
-
-            // `root` inside this component resolves to PanelHero, not this
-            // Panel, so panel state is reached through `header`.
-            trailingControl: Component {
-              ToggleSwitch {
-                id: blockSwitch
-                checked: header.isBlocked
-                busy: header.isBusy
-                foreground: hero.foreground
-                onToggled: header.flip()
-
-                PanelToolTip {
-                  visible: blockSwitch.containsMouse
-                  text: header.isBlocked ? "Unblock YouTube" : "Block YouTube"
-                  fontFamily: hero.fontFamily
-                }
-              }
+          title: "Site Block"
+          meta: root.blockedCount + " of " + root.sites.length + " blocked"
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          iconComponent: Component {
+            Text {
+              text: root.barGlyph
+              color: root.allBlocked ? root.dim : root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.display
             }
           }
+        }
 
-          readonly property bool isBlocked: root.blocked
-          readonly property bool isBusy: root.busy
-          function flip() { root.setBlocked(!root.blocked) }
+        Column {
+          width: parent.width
+          spacing: Style.space(6)
+
+          Repeater {
+            model: root.sites
+
+            SiteRow {
+              required property var modelData
+              required property int index
+              width: parent.width
+              site: modelData
+              rowIndex: index
+            }
+          }
         }
 
         Text {
@@ -176,6 +199,89 @@ Panel {
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
         }
+      }
+    }
+  }
+
+  // Icon, name, state, switch. Not the kit's Toggle, which has no icon slot.
+  component SiteRow: CursorSurface {
+    id: siteRow
+    property var site: null
+    property int rowIndex: 0
+    readonly property bool pending: site !== null && root.pendingSite === site.name
+    readonly property bool blocked: site !== null && site.blocked
+
+    hasCursor: root.cursorActive && root.cursorIndex === rowIndex
+    foreground: root.foreground
+    implicitHeight: siteContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: {
+        root.cursorActive = true
+        root.cursorIndex = siteRow.rowIndex
+      }
+      onClicked: root.flip(siteRow.rowIndex)
+    }
+
+    Row {
+      id: siteContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      spacing: Style.space(10)
+
+      Text {
+        id: siteIcon
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.font.heading * 1.4
+        horizontalAlignment: Text.AlignHCenter
+        text: root.siteGlyph(siteRow.site ? siteRow.site.name : "")
+        // Blocked recedes; unblocked stands out in the site's own colour.
+        color: siteRow.blocked ? root.dim : root.siteColor(siteRow.site ? siteRow.site.name : "")
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+      }
+
+      Column {
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width - siteIcon.width - siteSwitch.width - parent.spacing * 2
+        spacing: Style.spacing.xs
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: siteRow.site ? siteRow.site.label : ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: true
+          elide: Text.ElideRight
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: siteRow.pending ? "Waiting for authentication…" : (siteRow.blocked ? "Blocked" : "Not blocked")
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+      }
+
+      // The row owns the click, so the switch is presentation only.
+      ToggleSwitch {
+        id: siteSwitch
+        anchors.verticalCenter: parent.verticalCenter
+        checked: siteRow.blocked
+        busy: siteRow.pending
+        interactive: false
+        foreground: root.foreground
       }
     }
   }

@@ -1,0 +1,122 @@
+#!/bin/bash
+# Block or unblock distracting sites: /etc/hosts for every program, plus a
+# Chrome/Chromium URLBlocklist policy for browsers doing their own DNS.
+#
+#   status        one line per site: name, label, blocked (0/1) -- no root
+#   on  SITE|all  block
+#   off SITE|all  unblock
+#
+# Chrome watches its policy directory and /etc/hosts, so changes take effect
+# in a running browser within a few seconds -- no restart.
+
+set -euo pipefail
+
+HOSTS=/etc/hosts
+POLICY_DIRS=(/etc/chromium/policies/managed /etc/opt/chrome/policies/managed)
+POLICY_NAME=site-block.json
+
+SITES=(youtube twitter)
+
+site_label() {
+  case $1 in
+    youtube) echo "YouTube" ;;
+    twitter) echo "X / Twitter" ;;
+  esac
+}
+
+# The hosts file cannot wildcard, so name the subdomains that matter.
+site_hosts() {
+  case $1 in
+    youtube) echo youtube.com www.youtube.com m.youtube.com music.youtube.com \
+      tv.youtube.com studio.youtube.com youtu.be www.youtu.be \
+      youtube-nocookie.com www.youtube-nocookie.com \
+      youtubei.googleapis.com youtube.googleapis.com \
+      i.ytimg.com s.ytimg.com yt3.ggpht.com ;;
+    # t.co is left alone: it is the redirector in front of every link posted
+    # there, and blocking it breaks links to unrelated sites from elsewhere.
+    twitter) echo x.com www.x.com mobile.x.com api.x.com \
+      twitter.com www.twitter.com mobile.twitter.com api.twitter.com \
+      platform.twitter.com abs.twimg.com pbs.twimg.com video.twimg.com ;;
+  esac
+}
+
+# URLBlocklist entries match every subdomain.
+site_policy() {
+  case $1 in
+    youtube) echo youtube.com youtu.be youtube-nocookie.com ytimg.com ;;
+    twitter) echo x.com twitter.com twimg.com ;;
+  esac
+}
+
+die() { echo "site-block: $*" >&2; exit 1; }
+
+begin_marker() { echo "# >>> site-block:$1 >>>"; }
+end_marker() { echo "# <<< site-block:$1 <<<"; }
+
+is_blocked() { grep -qxF "$(begin_marker "$1")" "$HOSTS"; }
+
+strip_hosts() {
+  sed -i "/^$(begin_marker "$1")\$/,/^$(end_marker "$1")\$/d" "$HOSTS"
+}
+
+# One policy file for every blocked site: separate files setting the same
+# policy conflict rather than merge.
+write_policy() {
+  local site entries=() dir
+  for site in "${SITES[@]}"; do
+    is_blocked "$site" || continue
+    for entry in $(site_policy "$site"); do entries+=("\"$entry\""); done
+  done
+  for dir in "${POLICY_DIRS[@]}"; do
+    if (( ${#entries[@]} == 0 )); then
+      rm -f "$dir/$POLICY_NAME"
+      continue
+    fi
+    install -d -m 0755 "$dir"
+    local IFS=,
+    printf '{"URLBlocklist": [%s]}\n' "${entries[*]}" >"$dir/$POLICY_NAME"
+    chmod 0644 "$dir/$POLICY_NAME"
+  done
+}
+
+block() {
+  strip_hosts "$1"
+  {
+    begin_marker "$1"
+    for d in $(site_hosts "$1"); do printf '0.0.0.0 %s\n:: %s\n' "$d" "$d"; done
+    end_marker "$1"
+  } >>"$HOSTS"
+}
+
+# Resolve SITE|all to a list, refusing anything not in SITES: this runs as
+# root on arguments the caller chose.
+targets() {
+  [[ -n ${1:-} ]] || die "name a site or 'all'"
+  if [[ $1 == all ]]; then printf '%s\n' "${SITES[@]}"; return; fi
+  local site
+  for site in "${SITES[@]}"; do [[ $site == "$1" ]] && { echo "$site"; return; }; done
+  die "unknown site '$1' (known: ${SITES[*]})"
+}
+
+change() {
+  [[ $EUID -eq 0 ]] || die "$1 needs root"
+  # Assigned on its own line so a rejected name fails the script, not just
+  # the command substitution.
+  local site list
+  list=$(targets "${2:-}")
+  for site in $list; do
+    if [[ $1 == on ]]; then block "$site"; else strip_hosts "$site"; fi
+  done
+  write_policy
+  command -v resolvectl >/dev/null && resolvectl flush-caches 2>/dev/null || true
+}
+
+case "${1:-status}" in
+  status)
+    for site in "${SITES[@]}"; do
+      printf '%s\t%s\t%s\n' "$site" "$(site_label "$site")" "$(is_blocked "$site" && echo 1 || echo 0)"
+    done
+    ;;
+  on|off) change "$1" "${2:-}" ;;
+  *) die "usage: site-block {status|on SITE|off SITE}  (SITE: ${SITES[*]} or all)" ;;
+esac
