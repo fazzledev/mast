@@ -13,8 +13,13 @@ import qs.Ui
 // Unblocking first opens a full-screen overlay where you type out a
 // motivational paragraph picked at random from paragraphs.txt -- around 190
 // words, so roughly five minutes, long enough for most urges to peak and pass
-// -- and only then raises the shell's polkit dialog. A block you can lift with
+// -- then asks once more, plainly, whether you still want it unblocked, and
+// only on a yes raises the shell's polkit dialog. A block you can lift with
 // one stray click is not much of a block.
+//
+// Blocking only stops new requests, so close-open.sh then closes that site's
+// web app windows and reloads browser windows showing it -- otherwise a video
+// that is already playing plays on.
 //
 // The site list comes from the helper's status output, so adding a site there
 // adds a switch here with no change to this file.
@@ -41,6 +46,8 @@ Panel {
   // paragraph drawn for it.
   property var confirmingSite: null
   property string confirmPhrase: ""
+  // Typing done; the overlay is on its yes/no question.
+  property bool confirmAsking: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -112,17 +119,28 @@ Panel {
       return
     }
     confirmPhrase = phrase
+    confirmAsking = false
     confirmingSite = site
     close()
   }
 
   function cancelConfirm() {
     confirmingSite = null
+    confirmAsking = false
+  }
+
+  function askConfirm() {
+    confirmAsking = true
+    // No is the default: Enter straight after the last keystroke keeps the
+    // block.
+    askKeys.yesSelected = false
+    Qt.callLater(function() { askKeys.forceActiveFocus() })
   }
 
   function finishConfirm() {
     var site = confirmingSite
     confirmingSite = null
+    confirmAsking = false
     setBlocked(site, false)
   }
 
@@ -176,6 +194,9 @@ Panel {
     id: toggleProc
     stderr: StdioCollector { id: toggleStderr; waitForEnd: true }
     onExited: function(exitCode) {
+      if (exitCode === 0 && root.pendingBlock) {
+        Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, ""), root.pendingSite])
+      }
       root.pendingSite = ""
       // 126 is pkexec's "dismissed the dialog" -- not worth an error line.
       if (exitCode !== 0 && exitCode !== 126) {
@@ -297,7 +318,7 @@ Panel {
     // not a stray click beside the card.
     MouseArea {
       anchors.fill: parent
-      onClicked: phraseField.forceActiveFocus()
+      onClicked: root.confirmAsking ? askKeys.forceActiveFocus() : phraseField.forceActiveFocus()
     }
 
     BorderSurface {
@@ -349,7 +370,9 @@ Panel {
 
             Text {
               textFormat: Text.PlainText
-              text: "Type this out first. Take your time -- the urge will pass while you do."
+              text: root.confirmAsking
+                ? "You typed it all out. One last question."
+                : "Type this out first. Take your time -- the urge will pass while you do."
               color: card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
@@ -360,6 +383,7 @@ Panel {
         // What is typed so far in full colour, the rest faint. Styled text is
         // not selectable, so the paragraph cannot be copied into the field.
         Text {
+          visible: !root.confirmAsking
           width: parent.width
           textFormat: Text.StyledText
           text: {
@@ -383,6 +407,7 @@ Panel {
           readonly property bool onTrack: root.confirmPhrase.indexOf(typed) === 0
           readonly property int progress: onTrack ? typed.length : lastGood
 
+          visible: !root.confirmAsking
           width: parent.width
           height: Math.max(Style.space(120), implicitHeight)
           wrapMode: TextArea.Wrap
@@ -412,7 +437,7 @@ Panel {
             // are not guaranteed to have caught up with this change yet.
             var now = root.normalise(text)
             if (root.confirmPhrase.indexOf(now) === 0) lastGood = now.length
-            if (now.trim() === root.confirmPhrase) root.finishConfirm()
+            if (now.trim() === root.confirmPhrase) root.askConfirm()
           }
           Keys.onPressed: function(event) {
             if (event.matches(StandardKey.Paste)) event.accepted = true
@@ -426,6 +451,7 @@ Panel {
         }
 
         Item {
+          visible: !root.confirmAsking
           width: parent.width
           height: progressText.implicitHeight
 
@@ -450,6 +476,92 @@ Panel {
             color: card.faint
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
+          }
+        }
+
+        // The yes/no step. Keys live on this item so the buttons stay plain.
+        Item {
+          id: askKeys
+          visible: root.confirmAsking
+          width: parent.width
+          height: askColumn.implicitHeight
+          focus: root.confirmAsking
+
+          property bool yesSelected: false
+
+          Keys.onPressed: function(event) {
+            switch (event.key) {
+            case Qt.Key_Left:
+            case Qt.Key_Right:
+            case Qt.Key_Tab:
+            case Qt.Key_Backtab:
+              askKeys.yesSelected = !askKeys.yesSelected
+              break
+            case Qt.Key_Return:
+            case Qt.Key_Enter:
+            case Qt.Key_Space:
+              if (askKeys.yesSelected) root.finishConfirm()
+              else root.cancelConfirm()
+              break
+            case Qt.Key_Y:
+              root.finishConfirm()
+              break
+            case Qt.Key_N:
+            case Qt.Key_Escape:
+              root.cancelConfirm()
+              break
+            default:
+              return
+            }
+            event.accepted = true
+          }
+
+          Column {
+            id: askColumn
+            width: parent.width
+            spacing: Style.space(18)
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Do you still want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
+              color: card.text
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
+              wrapMode: Text.WordWrap
+            }
+
+            Row {
+              spacing: Style.space(10)
+
+              Button {
+                text: "No, keep it blocked"
+                bordered: true
+                hasCursor: !askKeys.yesSelected
+                foreground: card.text
+                fontFamily: root.fontFamily
+                onHovered: function(on) { if (on) askKeys.yesSelected = false }
+                onClicked: root.cancelConfirm()
+              }
+
+              Button {
+                text: "Yes, unblock"
+                bordered: true
+                hasCursor: askKeys.yesSelected
+                foreground: card.text
+                fontFamily: root.fontFamily
+                onHovered: function(on) { if (on) askKeys.yesSelected = true }
+                onClicked: root.finishConfirm()
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Y / N  ·  Esc keeps it blocked"
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
         }
       }
