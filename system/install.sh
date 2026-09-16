@@ -7,8 +7,11 @@ set -euo pipefail
 
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BIN=/usr/local/bin/site-block
+RULE=/etc/polkit-1/rules.d/50-site-block.rules
+TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || echo "")}
 
 [[ $EUID -eq 0 ]] || { echo "run me with sudo" >&2; exit 1; }
+[[ -n $TARGET_USER ]] || { echo "could not determine the target user" >&2; exit 1; }
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # This used to be YouTube-only, as block-youtube. Clear that out so the two
@@ -23,9 +26,27 @@ fi
 
 # Copied, not symlinked: the bar runs this as root through pkexec, so it must
 # be root-owned and out of reach of this user-writable repo. Re-run after edits.
-# No sudoers rule on purpose -- lifting a block always asks for auth.
 say "Installing $BIN"
 install -o root -g root -m 0755 "$SRC_DIR/site-block" "$BIN"
+
+# Blocking should be free; only unblocking should cost a prompt. pkexec passes
+# the full command line to polkit, so this lets exactly `site-block on <name>`
+# through for the logged-in user at the seat. The helper rejects names it does
+# not know, so the pattern does not need to track the site list. `off` still
+# falls through to polkit's default and asks for auth.
+say "Installing $RULE for $TARGET_USER"
+cat >"$RULE" <<RULEFILE
+// Installed by ~/.dotfiles/system/site-block/install.sh
+polkit.addRule(function(action, subject) {
+  if (action.id == "org.freedesktop.policykit.exec" &&
+      action.lookup("program") == "$BIN" &&
+      /^\\/usr\\/local\\/bin\\/site-block on [a-z]+\$/.test(action.lookup("command_line")) &&
+      subject.user == "$TARGET_USER" && subject.local && subject.active) {
+    return polkit.Result.YES;
+  }
+});
+RULEFILE
+chmod 0644 "$RULE"
 
 say "Blocking every site"
 "$BIN" on all

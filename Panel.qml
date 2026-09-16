@@ -6,8 +6,9 @@ import qs.Ui
 
 // Bar toggles for the site block in ~/.dotfiles/system/site-block.
 //
-// Reading the state needs no privileges; flipping it goes through pkexec, so
-// every toggle raises the shell's polkit dialog. That is deliberate -- a block
+// Reading the state needs no privileges; flipping it goes through pkexec.
+// Blocking is let straight through by a polkit rule the installer adds, while
+// unblocking raises the shell's polkit dialog. That is deliberate -- a block
 // you can lift with one stray click is not much of a block.
 //
 // The site list comes from the helper's status output, so adding a site there
@@ -26,6 +27,7 @@ Panel {
   readonly property int blockedCount: sites.filter(function(s) { return s.blocked }).length
   readonly property bool allBlocked: installed && blockedCount === sites.length
   property string pendingSite: ""
+  property bool pendingBlock: false
   property string lastError: ""
   property int cursorIndex: 0
   property bool cursorActive: false
@@ -61,6 +63,7 @@ Panel {
     if (!site || toggleProc.running) return
     lastError = ""
     pendingSite = site.name
+    pendingBlock = on
     toggleProc.command = ["pkexec", root.helper, on ? "on" : "off", site.name]
     toggleProc.running = true
   }
@@ -266,7 +269,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: siteRow.pending ? "Waiting for authentication…" : (siteRow.blocked ? "Blocked" : "Not blocked")
+          text: siteRow.pending ? (root.pendingBlock ? "Blocking…" : "Waiting for authentication…") : (siteRow.blocked ? "Blocked" : "Not blocked")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
