@@ -8,6 +8,7 @@ set -euo pipefail
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BIN=/usr/local/bin/site-block
 RULE=/etc/polkit-1/rules.d/50-site-block.rules
+UNIT=/etc/systemd/system/site-block-restore.service
 TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || echo "")}
 
 [[ $EUID -eq 0 ]] || { echo "run me with sudo" >&2; exit 1; }
@@ -47,6 +48,23 @@ polkit.addRule(function(action, subject) {
 });
 RULEFILE
 chmod 0644 "$RULE"
+
+# Relock timers are transient and die with a reboot; this puts them back.
+say "Installing $UNIT"
+cat >"$UNIT" <<'UNITFILE'
+[Unit]
+Description=Re-arm or apply site-block relocks after boot
+ConditionDirectoryNotEmpty=/var/lib/site-block
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/site-block restore
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+systemctl daemon-reload
+systemctl enable site-block-restore.service
 
 say "Blocking every site"
 "$BIN" on all

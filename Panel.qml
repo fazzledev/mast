@@ -17,9 +17,13 @@ import qs.Ui
 // only on a yes raises the shell's polkit dialog. A block you can lift with
 // one stray click is not much of a block.
 //
-// Blocking only stops new requests, so close-open.sh then closes that site's
-// web app windows and reloads browser windows showing it -- otherwise a video
-// that is already playing plays on.
+// Every unblock is temporary: the helper arms a systemd timer that blocks the
+// site again, and each row counts down to it.
+//
+// Blocking only stops new requests, so whenever a site turns blocked -- from
+// the switch or from that timer -- close-open.sh closes its web app windows
+// and reloads browser windows showing it. Otherwise a video that is already
+// playing plays on.
 //
 // The site list comes from the helper's status output, so adding a site there
 // adds a switch here with no change to this file.
@@ -93,6 +97,15 @@ Panel {
     return next
   }
 
+  // Seconds since the epoch, ticking while anything is counting down.
+  property real now: Date.now() / 1000
+
+  function relockText(site) {
+    var left = Math.max(0, site.relockAt - now)
+    if (left < 60) return "Blocks again in under a minute"
+    return "Blocks again in " + Math.ceil(left / 60) + " min"
+  }
+
   function refresh() {
     if (!statusProc.running) statusProc.running = true
   }
@@ -148,10 +161,20 @@ Panel {
     var next = []
     String(raw || "").split("\n").forEach(function(line) {
       var f = line.split("\t")
-      if (f.length === 3 && (f[2] === "0" || f[2] === "1")) {
-        next.push({ name: f[0], label: f[1], blocked: f[2] === "1" })
+      if (f.length >= 3 && (f[2] === "0" || f[2] === "1")) {
+        next.push({ name: f[0], label: f[1], blocked: f[2] === "1", relockAt: parseInt(f[3] || "0", 10) || 0 })
       }
     })
+    // Sites that were open last time we looked and are blocked now. Nothing
+    // fires on the first read, when there is no "last time" to compare with.
+    var closing = []
+    next.forEach(function(site) {
+      var before = sites.filter(function(s) { return s.name === site.name })[0]
+      if (before && !before.blocked && site.blocked) closing.push(site.name)
+    })
+    if (closing.length > 0) {
+      Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, "")].concat(closing))
+    }
     sites = next
     if (cursorIndex >= sites.length) cursorIndex = Math.max(0, sites.length - 1)
   }
@@ -171,6 +194,17 @@ Panel {
       .map(function(p) { return root.normalise(p).trim() })
       .filter(function(p) { return p !== "" })
     onLoadFailed: root.paragraphs = []
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.blockedCount < root.sites.length
+    onTriggered: {
+      root.now = Date.now() / 1000
+      // Pick up the relock as soon as it is due rather than on the next poll.
+      if (root.sites.some(function(s) { return !s.blocked && s.relockAt > 0 && s.relockAt <= root.now })) root.refresh()
+    }
   }
 
   Timer {
@@ -194,9 +228,6 @@ Panel {
     id: toggleProc
     stderr: StdioCollector { id: toggleStderr; waitForEnd: true }
     onExited: function(exitCode) {
-      if (exitCode === 0 && root.pendingBlock) {
-        Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, ""), root.pendingSite])
-      }
       root.pendingSite = ""
       // 126 is pkexec's "dismissed the dialog" -- not worth an error line.
       if (exitCode !== 0 && exitCode !== 126) {
@@ -524,7 +555,7 @@ Panel {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: "Do you still want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
+              text: "Do you still want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "? It blocks itself again after a while."
               color: card.text
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
@@ -631,7 +662,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: siteRow.pending ? (root.pendingBlock ? "Blocking…" : "Waiting for authentication…") : (siteRow.blocked ? "Blocked" : "Not blocked")
+          text: siteRow.pending ? (root.pendingBlock ? "Blocking…" : "Waiting for authentication…") : (siteRow.blocked ? "Blocked" : (siteRow.site && siteRow.site.relockAt > 0 ? root.relockText(siteRow.site) : "Not blocked"))
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
