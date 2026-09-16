@@ -81,6 +81,9 @@ Panel {
   // The site being unblocked in the overlay (null when it is closed), and the
   // paragraph drawn for it.
   property var confirmingSite: null
+  // Index into `passages` of the one on screen; the prev and next buttons
+  // step from it.
+  property int confirmIndex: -1
   property string confirmPhrase: ""
   property string confirmSource: ""
   property string confirmUrl: ""
@@ -137,12 +140,36 @@ Panel {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   }
 
-  function pickPassage() {
-    if (passages.length === 0) return null
-    var next = passages[Math.floor(Math.random() * passages.length)]
-    // Never the same one twice running when there is a choice.
-    if (passages.length > 1 && next.text === confirmPhrase) return pickPassage()
+  // A random index, never the passage on screen when there is a choice.
+  function randomPassageIndex() {
+    if (passages.length === 0) return -1
+    var next = Math.floor(Math.random() * passages.length)
+    if (passages.length > 1 && passages[next].text === confirmPhrase) return randomPassageIndex()
     return next
+  }
+
+  // Switching passage starts the typing over, so hunting for an easier one
+  // costs whatever was already typed.
+  function showPassage(index) {
+    var passage = passages[index]
+    if (!passage) return
+    confirmIndex = index
+    confirmPhrase = passage.text
+    confirmSource = passage.source
+    confirmUrl = passage.url
+    phraseField.text = ""
+    phraseField.lastText = ""
+    phraseField.lastGood = 0
+    phraseField.forceActiveFocus()
+  }
+
+  function stepPassage(delta) {
+    if (passages.length < 2) return
+    showPassage((confirmIndex + delta + passages.length) % passages.length)
+  }
+
+  function shufflePassage() {
+    if (passages.length > 1) showPassage(randomPassageIndex())
   }
 
   // Seconds since the epoch, ticking while anything is counting down.
@@ -233,14 +260,12 @@ Panel {
       setBlocked(site, true)
       return
     }
-    var passage = pickPassage()
-    if (!passage) {
+    var index = randomPassageIndex()
+    if (index < 0) {
       lastError = "No passages to type -- paragraphs.txt is missing or empty, and nothing has been fetched."
       return
     }
-    confirmPhrase = passage.text
-    confirmSource = passage.source
-    confirmUrl = passage.url
+    showPassage(index)
     confirmAsking = false
     confirmingSite = site
     close()
@@ -519,12 +544,9 @@ Panel {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    onVisibleChanged: if (visible) {
-      phraseField.text = ""
-      phraseField.lastText = ""
-      phraseField.lastGood = 0
-      Qt.callLater(function() { phraseField.forceActiveFocus() })
-    }
+    // showPassage has already cleared the field; focus only lands once the
+    // window is mapped.
+    onVisibleChanged: if (visible) Qt.callLater(function() { phraseField.forceActiveFocus() })
 
     Rectangle {
       anchors.fill: parent
@@ -614,44 +636,97 @@ Panel {
           wrapMode: Text.WordWrap
         }
 
-        // Where the passage is from. The link opens behind this overlay, to
-        // read once you are done here.
-        Column {
-          visible: !root.confirmAsking && root.confirmSource !== ""
+        // Where the passage is from, and buttons to swap it for another.
+        Item {
+          visible: !root.confirmAsking
           width: parent.width
-          spacing: Style.space(2)
+          height: Math.max(sourceColumn.implicitHeight, passageControls.implicitHeight)
 
-          Text {
-            textFormat: Text.PlainText
-            width: parent.width
-            text: "-- " + root.confirmSource
-            color: card.faint
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.italic: true
-            wrapMode: Text.WordWrap
+          // The link opens behind this overlay, to read once you are done here.
+          Column {
+            id: sourceColumn
+            visible: root.confirmSource !== ""
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - passageControls.width - Style.space(16)
+            spacing: Style.space(2)
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "-- " + root.confirmSource
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              font.italic: true
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              visible: root.confirmUrl !== ""
+              textFormat: Text.PlainText
+              width: parent.width
+              text: root.confirmUrl
+              color: sourceLink.containsMouse ? card.text : card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.underline: true
+              elide: Text.ElideMiddle
+
+              MouseArea {
+                id: sourceLink
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  Qt.openUrlExternally(root.confirmUrl)
+                  phraseField.forceActiveFocus()
+                }
+              }
+            }
           }
 
-          Text {
-            visible: root.confirmUrl !== ""
-            textFormat: Text.PlainText
-            width: parent.width
-            text: root.confirmUrl
-            color: sourceLink.containsMouse ? card.text : card.faint
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            font.underline: true
-            elide: Text.ElideMiddle
+          Row {
+            id: passageControls
+            visible: root.passages.length > 1
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(4)
 
-            MouseArea {
-              id: sourceLink
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: {
-                Qt.openUrlExternally(root.confirmUrl)
-                phraseField.forceActiveFocus()
-              }
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰒮"
+              tooltipText: "Previous passage (Alt+Left)"
+              foreground: card.text
+              fontFamily: root.fontFamily
+              onClicked: root.stepPassage(-1)
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: (root.confirmIndex + 1) + " / " + root.passages.length
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰒭"
+              tooltipText: "Next passage (Alt+Right)"
+              foreground: card.text
+              fontFamily: root.fontFamily
+              onClicked: root.stepPassage(1)
+            }
+
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰒝"
+              tooltipText: "Random passage (Alt+S)"
+              foreground: card.text
+              fontFamily: root.fontFamily
+              onClicked: root.shufflePassage()
             }
           }
         }
@@ -699,7 +774,15 @@ Panel {
             if (now.trim() === root.confirmPhrase) root.askConfirm()
           }
           Keys.onPressed: function(event) {
-            if (event.matches(StandardKey.Paste)) event.accepted = true
+            if (event.matches(StandardKey.Paste)) {
+              event.accepted = true
+            } else if (event.modifiers & Qt.AltModifier) {
+              if (event.key === Qt.Key_Left) root.stepPassage(-1)
+              else if (event.key === Qt.Key_Right) root.stepPassage(1)
+              else if (event.key === Qt.Key_S) root.shufflePassage()
+              else return
+              event.accepted = true
+            }
           }
           Keys.onReturnPressed: function(event) { event.accepted = true }
           Keys.onEnterPressed: function(event) { event.accepted = true }
