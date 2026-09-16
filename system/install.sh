@@ -1,7 +1,8 @@
 #!/bin/bash
 # Installs the site block and the helper the bar toggles it with:
-#   sudo bash ~/.dotfiles/system/site-block/install.sh
-# Idempotent. Leaves every site blocked. See uninstall.sh to undo.
+#   sudo bash ~/.dotfiles/system/site-block/install.sh [SITE...]
+# Idempotent, and leaves existing blocks as they are; name sites to block
+# them as well (e.g. `youtube twitter`). See uninstall.sh to undo.
 
 set -euo pipefail
 
@@ -66,6 +67,10 @@ UNITFILE
 systemctl daemon-reload
 systemctl enable site-block-restore.service
 
-say "Blocking every site"
-"$BIN" on all
+for site in "$@"; do
+  say "Blocking $site"
+  "$BIN" on "$site"
+done
+
+say "Current state"
 "$BIN" status

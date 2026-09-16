@@ -25,8 +25,11 @@ import qs.Ui
 // and reloads browser windows showing it. Otherwise a video that is already
 // playing plays on.
 //
-// The site list comes from the helper's status output, so adding a site there
-// adds a switch here with no change to this file.
+// The site list comes from the helper's status output. Only the ones named in
+// this widget's `sites` setting get a row -- the rest sit under a collapsed
+// "More sites", where one click adds a site to the setting -- plus any that are blocked or
+// counting down, so taking a site out of the setting never hides a block you
+// would then forget about, nor lifts one.
 Panel {
   id: root
   moduleName: "fazzledev.site-block"
@@ -38,8 +41,26 @@ Panel {
   // stays hidden until then, and for good if the helper is not installed.
   property var sites: []
   readonly property bool installed: sites.length > 0
-  readonly property int blockedCount: sites.filter(function(s) { return s.blocked }).length
-  readonly property bool allBlocked: installed && blockedCount === sites.length
+  // Names from the `sites` setting (see manifest.json).
+  readonly property var enabledNames: {
+    var v = setting("sites", ["youtube", "twitter"])
+    return Array.isArray(v) ? v : String(v).split(/[,\s]+/)
+  }
+  // Names added from "More sites" whose settings write has not landed yet, so
+  // the row appears on the click rather than a moment later.
+  property var addedNames: []
+  readonly property var shownSites: sites.filter(function(s) {
+    return s.blocked || s.relockAt > 0 || enabledNames.indexOf(s.name) !== -1 || addedNames.indexOf(s.name) !== -1
+  })
+  readonly property var hiddenSites: sites.filter(function(s) { return shownSites.indexOf(s) === -1 })
+  property bool moreExpanded: false
+
+  // One cursor runs down the site rows, the "More sites" row, then -- when it
+  // is open -- the hidden sites.
+  readonly property int moreIndex: hiddenSites.length > 0 ? shownSites.length : -1
+  readonly property int cursorCount: shownSites.length + (hiddenSites.length > 0 ? 1 + (moreExpanded ? hiddenSites.length : 0) : 0)
+  readonly property int blockedCount: shownSites.filter(function(s) { return s.blocked }).length
+  readonly property bool allBlocked: installed && blockedCount === shownSites.length
   property string pendingSite: ""
   property bool pendingBlock: false
   property string lastError: ""
@@ -61,11 +82,18 @@ Panel {
   // Brand glyphs for the sites the helper knows; anything added there later
   // falls back to the shield until it gets one here. The font has no X logo,
   // so X keeps the bird.
-  readonly property var siteGlyphs: ({ youtube: "󰗃", twitter: "󰕄" })
+  // TikTok has no mark in the font either, so it gets a music note.
+  readonly property var siteGlyphs: ({
+    youtube: "󰗃", twitter: "󰕄", instagram: "󰋾", facebook: "󰈌",
+    tiktok: "󰝚", reddit: "󰑍", twitch: "󰕃", netflix: "󰝆", hackernews: "\uf1d4"
+  })
   function siteGlyph(name) { return siteGlyphs[name] || "󰕥" }
   // Unblocked sites show in their brand colour -- Twitter blue for the bird,
   // since that is the mark on screen. Unknown sites fall back to urgent.
-  readonly property var siteColors: ({ youtube: "#ff0000", twitter: "#1da1f2" })
+  readonly property var siteColors: ({
+    youtube: "#ff0000", twitter: "#1da1f2", instagram: "#e1306c", facebook: "#1877f2",
+    tiktok: "#ff0050", reddit: "#ff4500", twitch: "#9146ff", netflix: "#e50914", hackernews: "#ff6600"
+  })
   function siteColor(name) { return siteColors[name] || root.urgent }
 
   // Everything blocked is the resting state, so it recedes; anything unblocked
@@ -119,8 +147,26 @@ Panel {
     toggleProc.running = true
   }
 
+  function activate(index) {
+    if (index < shownSites.length) flip(index)
+    else if (index === moreIndex) moreExpanded = !moreExpanded
+    else showSite(hiddenSites[index - moreIndex - 1])
+  }
+
+  // Add a site to the `sites` setting. The shell writes shell.json itself,
+  // through its symlink, so the change lands in the dotfiles repo.
+  function showSite(site) {
+    if (!site) return
+    var names = enabledNames.concat(addedNames).filter(function(n, i, all) { return n && all.indexOf(n) === i })
+    if (names.indexOf(site.name) === -1) names.push(site.name)
+    addedNames = addedNames.concat([site.name])
+    Quickshell.execDetached(["omarchy-bar", "set", root.moduleName, "sites", JSON.stringify(names), "--json"])
+    if (hiddenSites.length === 0) moreExpanded = false
+    cursorIndex = Math.min(cursorIndex, cursorCount - 1)
+  }
+
   function flip(index) {
-    var site = sites[index]
+    var site = shownSites[index]
     if (!site || toggleProc.running) return
     if (!site.blocked) {
       setBlocked(site, true)
@@ -176,11 +222,12 @@ Panel {
       Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, "")].concat(closing))
     }
     sites = next
-    if (cursorIndex >= sites.length) cursorIndex = Math.max(0, sites.length - 1)
+    if (cursorIndex >= shownSites.length) cursorIndex = Math.max(0, shownSites.length - 1)
   }
 
   onOpenedChanged: if (opened) {
     cursorActive = false
+    moreExpanded = false
     refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -199,7 +246,7 @@ Panel {
   Timer {
     interval: 1000
     repeat: true
-    running: root.blockedCount < root.sites.length
+    running: root.blockedCount < root.shownSites.length
     onTriggered: {
       root.now = Date.now() / 1000
       // Pick up the relock as soon as it is due rather than on the next poll.
@@ -257,16 +304,16 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(400))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(760))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
-        root.cursorIndex = Math.max(0, Math.min(root.sites.length - 1, root.cursorIndex + dy))
+        root.cursorIndex = Math.max(0, Math.min(root.cursorCount - 1, root.cursorIndex + dy))
       }
-      onActivateRequested: if (root.cursorActive) root.flip(root.cursorIndex)
+      onActivateRequested: if (root.cursorActive) root.activate(root.cursorIndex)
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -278,7 +325,7 @@ Panel {
         PanelHero {
           width: parent.width
           title: "Site Block"
-          meta: root.blockedCount + " of " + root.sites.length + " blocked"
+          meta: root.blockedCount + " of " + root.shownSites.length + " blocked"
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconComponent: Component {
@@ -296,7 +343,7 @@ Panel {
           spacing: Style.space(6)
 
           Repeater {
-            model: root.sites
+            model: root.shownSites
 
             SiteRow {
               required property var modelData
@@ -304,6 +351,23 @@ Panel {
               width: parent.width
               site: modelData
               rowIndex: index
+            }
+          }
+
+          MoreRow {
+            visible: root.hiddenSites.length > 0
+            width: parent.width
+          }
+
+          Repeater {
+            model: root.moreExpanded ? root.hiddenSites : []
+
+            HiddenSiteRow {
+              required property var modelData
+              required property int index
+              width: parent.width
+              site: modelData
+              rowIndex: root.moreIndex + 1 + index
             }
           }
         }
@@ -595,6 +659,119 @@ Panel {
             }
           }
         }
+      }
+    }
+  }
+
+  // Expands and collapses the list of sites not in the setting.
+  component MoreRow: CursorSurface {
+    id: moreRow
+    hasCursor: root.cursorActive && root.cursorIndex === root.moreIndex
+    foreground: root.foreground
+    implicitHeight: moreContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: {
+        root.cursorActive = true
+        root.cursorIndex = root.moreIndex
+      }
+      onClicked: root.moreExpanded = !root.moreExpanded
+    }
+
+    Row {
+      id: moreContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      spacing: Style.space(10)
+
+      Text {
+        id: chevron
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.font.heading * 1.4
+        horizontalAlignment: Text.AlignHCenter
+        text: root.moreExpanded ? "󰅀" : "󰅂"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "More sites (" + root.hiddenSites.length + ")"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+      }
+    }
+  }
+
+  // A site not in the setting: its mark, its name, and a click to show it.
+  component HiddenSiteRow: CursorSurface {
+    id: hiddenRow
+    property var site: null
+    property int rowIndex: 0
+
+    hasCursor: root.cursorActive && root.cursorIndex === rowIndex
+    foreground: root.foreground
+    implicitHeight: hiddenContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: {
+        root.cursorActive = true
+        root.cursorIndex = hiddenRow.rowIndex
+      }
+      onClicked: root.showSite(hiddenRow.site)
+    }
+
+    Row {
+      id: hiddenContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      spacing: Style.space(10)
+
+      Text {
+        id: hiddenIcon
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.font.heading * 1.4
+        horizontalAlignment: Text.AlignHCenter
+        text: root.siteGlyph(hiddenRow.site ? hiddenRow.site.name : "")
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width - hiddenIcon.width - addLabel.width - parent.spacing * 2
+        textFormat: Text.PlainText
+        text: hiddenRow.site ? hiddenRow.site.label : ""
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+
+      Text {
+        id: addLabel
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "Add"
+        color: hiddenRow.hasCursor ? root.foreground : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
       }
     }
   }

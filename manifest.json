@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fazzledev.site-block",
   "name": "Site Block",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "author": "fazzledev",
   "description": "Shows which distracting sites are blocked and toggles each one, behind an auth prompt.",
   "kinds": [
@@ -13,8 +13,67 @@
   },
   "barWidget": {
     "displayName": "Site Block",
-    "description": "Per-site switches for the system-wide block in system/site-block (YouTube, X/Twitter). Hides itself when the helper is not installed.",
+    "description": "Per-site switches for the system-wide block in system/site-block. Choose which sites get a row in settings; a blocked site always shows. Hides itself when the helper is not installed.",
     "category": "System",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaults": {
+      "sites": [
+        "youtube",
+        "twitter"
+      ]
+    },
+    "schema": [
+      {
+        "key": "sites",
+        "type": "multiselect",
+        "label": "Sites",
+        "description": "Which sites get a switch. A site that is blocked or counting down to a relock shows regardless, so removing it here never hides or lifts a block.",
+        "noSelectionText": "No sites",
+        "placeholderText": "Search sites...",
+        "emptyText": "No sites",
+        "options": [
+          {
+            "value": "youtube",
+            "label": "YouTube"
+          },
+          {
+            "value": "twitter",
+            "label": "X / Twitter"
+          },
+          {
+            "value": "instagram",
+            "label": "Instagram"
+          },
+          {
+            "value": "facebook",
+            "label": "Facebook"
+          },
+          {
+            "value": "tiktok",
+            "label": "TikTok"
+          },
+          {
+            "value": "reddit",
+            "label": "Reddit"
+          },
+          {
+            "value": "twitch",
+            "label": "Twitch"
+          },
+          {
+            "value": "netflix",
+            "label": "Netflix"
+          },
+          {
+            "value": "hackernews",
+            "label": "Hacker News"
+          }
+        ],
+        "defaultValue": [
+          "youtube",
+          "twitter"
+        ]
+      }
+    ]
   }
 }

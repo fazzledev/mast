@@ -20,14 +20,31 @@ app_class() {
   case $1 in
     youtube) echo '^chrome-((www|m|music)\.)?youtube\.com__' ;;
     twitter) echo '^chrome-((www|mobile)\.)?(x|twitter)\.com__' ;;
+    instagram) echo '^chrome-(www\.)?instagram\.com__' ;;
+    facebook) echo '^chrome-((www|m|web)\.)?facebook\.com__' ;;
+    tiktok) echo '^chrome-(www\.)?tiktok\.com__' ;;
+    reddit) echo '^chrome-((www|old|new)\.)?reddit\.com__' ;;
+    twitch) echo '^chrome-(www\.)?twitch\.tv__' ;;
+    netflix) echo '^chrome-(www\.)?netflix\.com__' ;;
+    hackernews) echo '^chrome-news\.ycombinator\.com__' ;;
   esac
 }
 
-# Browser window titles are "<tab title> - Google Chrome" (or Chromium).
+# Browser window titles are "<tab title> - Google Chrome" (or Chromium). Each
+# pattern is the site's own title convention, kept tight so an unrelated tab
+# that merely mentions the site is not reloaded.
+BROWSER=' - (Google Chrome|Chromium)$'
 tab_title() {
   case $1 in
-    youtube) echo ' - YouTube( Music)? - (Google Chrome|Chromium)$' ;;
-    twitter) echo ' / X - (Google Chrome|Chromium)$' ;;
+    youtube) echo " - YouTube( Music)?$BROWSER" ;;
+    twitter) echo " / X$BROWSER" ;;
+    instagram) echo "(^|• )Instagram( photos and videos)?$BROWSER" ;;
+    facebook) echo "(^|\\) |\\| )Facebook$BROWSER" ;;
+    tiktok) echo "(^|\\| )TikTok( - Make Your Day)?$BROWSER" ;;
+    reddit) echo "(^Reddit - .*| : r/[A-Za-z0-9_]+|^r/[A-Za-z0-9_]+)$BROWSER" ;;
+    twitch) echo "(^| - )Twitch$BROWSER" ;;
+    netflix) echo "(^| - )Netflix$BROWSER" ;;
+    hackernews) echo "(^| \\| )Hacker News$BROWSER" ;;
   esac
 }
 

@@ -26,12 +26,21 @@ BIN=/usr/local/bin/site-block
 # How long an unblock lasts before the site blocks itself again.
 RELOCK_MINUTES=15
 
-SITES=(youtube twitter)
+# Every site this knows how to block. Which ones show in the bar is the bar
+# widget's `sites` setting; the helper blocks whatever it is asked to.
+SITES=(youtube twitter instagram facebook tiktok reddit twitch netflix hackernews)
 
 site_label() {
   case $1 in
     youtube) echo "YouTube" ;;
     twitter) echo "X / Twitter" ;;
+    instagram) echo "Instagram" ;;
+    facebook) echo "Facebook" ;;
+    tiktok) echo "TikTok" ;;
+    reddit) echo "Reddit" ;;
+    twitch) echo "Twitch" ;;
+    netflix) echo "Netflix" ;;
+    hackernews) echo "Hacker News" ;;
   esac
 }
 
@@ -48,6 +57,17 @@ site_hosts() {
     twitter) echo x.com www.x.com mobile.x.com api.x.com \
       twitter.com www.twitter.com mobile.twitter.com api.twitter.com \
       platform.twitter.com abs.twimg.com pbs.twimg.com video.twimg.com ;;
+    instagram) echo instagram.com www.instagram.com i.instagram.com \
+      graph.instagram.com l.instagram.com ;;
+    # Not fbcdn.net: WhatsApp and Instagram share it.
+    facebook) echo facebook.com www.facebook.com m.facebook.com web.facebook.com \
+      mbasic.facebook.com fb.com www.fb.com fb.watch ;;
+    tiktok) echo tiktok.com www.tiktok.com m.tiktok.com vm.tiktok.com vt.tiktok.com ;;
+    reddit) echo reddit.com www.reddit.com old.reddit.com new.reddit.com \
+      np.reddit.com i.reddit.com redd.it i.redd.it v.redd.it preview.redd.it ;;
+    twitch) echo twitch.tv www.twitch.tv m.twitch.tv player.twitch.tv clips.twitch.tv ;;
+    netflix) echo netflix.com www.netflix.com ;;
+    hackernews) echo news.ycombinator.com ;;
   esac
 }
 
@@ -56,6 +76,13 @@ site_policy() {
   case $1 in
     youtube) echo youtube.com youtu.be youtube-nocookie.com ytimg.com ;;
     twitter) echo x.com twitter.com twimg.com ;;
+    instagram) echo instagram.com cdninstagram.com ;;
+    facebook) echo facebook.com fb.com fb.watch ;;
+    tiktok) echo tiktok.com ;;
+    reddit) echo reddit.com redd.it ;;
+    twitch) echo twitch.tv ;;
+    netflix) echo netflix.com ;;
+    hackernews) echo news.ycombinator.com ;;
   esac
 }
 
