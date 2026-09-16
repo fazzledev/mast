@@ -160,6 +160,9 @@ Panel {
     phraseField.text = ""
     phraseField.lastText = ""
     phraseField.lastGood = 0
+    phraseField.progressLog = []
+    phraseField.startedAt = 0
+    phraseField.wpm = 0
     phraseField.forceActiveFocus()
   }
 
@@ -737,6 +740,40 @@ Panel {
           // holds at the last point the text was right.
           property string lastText: ""
           property int lastGood: 0
+          // Typing speed over the last few seconds, in the usual five
+          // characters to a word, counting only text that matches. From the
+          // first keystroke until the window fills, it is over the time so far.
+          readonly property int wpmWindow: 10000
+          property var progressLog: [] // [{ t, chars }], plus the last entry before the window
+          property real startedAt: 0
+          property int wpm: 0
+
+          function logProgress() {
+            var now = Date.now()
+            if (startedAt === 0) startedAt = now
+            progressLog.push({ t: now, chars: lastGood })
+            while (progressLog.length > 1 && progressLog[1].t < now - wpmWindow) progressLog.shift()
+          }
+
+          function updateWpm() {
+            var now = Date.now()
+            var from = Math.max(now - wpmWindow, startedAt)
+            var base = 0
+            progressLog.forEach(function(e) { if (e.t <= from) base = e.chars })
+            // A floor on the time keeps the first keystrokes from reading as
+            // a burst of hundreds.
+            var minutes = Math.max(now - from, 2000) / 60000
+            wpm = Math.max(0, Math.round((lastGood - base) / 5 / minutes))
+          }
+
+          // Ticks so the figure falls off when typing stops, not only when a
+          // key moves it.
+          Timer {
+            interval: 500
+            repeat: true
+            running: overlay.visible && !root.confirmAsking && phraseField.startedAt > 0
+            onTriggered: phraseField.updateWpm()
+          }
           readonly property string typed: root.normalise(text)
           readonly property bool onTrack: root.confirmPhrase.indexOf(typed) === 0
           readonly property int progress: onTrack ? typed.length : lastGood
@@ -771,6 +808,7 @@ Panel {
             // are not guaranteed to have caught up with this change yet.
             var now = root.normalise(text)
             if (root.confirmPhrase.indexOf(now) === 0) lastGood = now.length
+            if (text !== "") logProgress()
             if (now.trim() === root.confirmPhrase) root.askConfirm()
           }
           Keys.onPressed: function(event) {
@@ -804,7 +842,7 @@ Panel {
             readonly property int wordsDone: phraseField.progress === 0 ? 0 : root.confirmPhrase.slice(0, phraseField.progress).trim().split(" ").length
             readonly property int wordsTotal: root.confirmPhrase.split(" ").length
             text: phraseField.onTrack
-              ? wordsDone + " of " + wordsTotal + " words"
+              ? wordsDone + " of " + wordsTotal + " words" + (phraseField.startedAt > 0 ? "  ·  " + phraseField.wpm + " wpm" : "")
               : "Typo -- fix it to keep going"
             color: phraseField.onTrack ? card.faint : root.urgent
             font.family: root.fontFamily
