@@ -6,6 +6,8 @@
 #                 it blocks itself again (epoch seconds, 0 if never) -- no root
 #   on  SITE|all  block
 #   off SITE|all  unblock, for RELOCK_MINUTES only
+#   forget SITE   drop an unblocked site's pending relock, so it can come off
+#                 the bar's list; refuses a blocked site
 #   restore       re-arm relock timers a reboot dropped (boot service)
 #
 # Every unblock is temporary. `off` hands systemd a transient timer that runs
@@ -189,6 +191,15 @@ case "${1:-status}" in
     done
     ;;
   on|off) change "$1" "${2:-}" ;;
+  forget)
+    [[ $EUID -eq 0 ]] || die "forget needs root"
+    [[ ${2:-} != all ]] || die "forget takes one site"
+    site=$(targets "${2:-}")
+    # Forgetting a blocked site would do nothing useful, and a caller mistaking
+    # it for an unblock should find out.
+    ! is_blocked "$site" || die "$site is blocked; unblock it first"
+    cancel_relock "$site"
+    ;;
   restore)
     # Transient timers do not survive a reboot. Block whatever ran out while
     # the machine was off; re-arm the rest for the time they have left.
@@ -204,5 +215,5 @@ case "${1:-status}" in
       fi
     done
     ;;
-  *) die "usage: site-block {status|on SITE|off SITE|restore}  (SITE: ${SITES[*]} or all)" ;;
+  *) die "usage: site-block {status|on SITE|off SITE|forget SITE|restore}  (SITE: ${SITES[*]} or all)" ;;
 esac

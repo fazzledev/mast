@@ -27,7 +27,8 @@ import qs.Ui
 //
 // The site list comes from the helper's status output. Only the ones named in
 // this widget's `sites` setting get a row -- the rest sit under a collapsed
-// "More sites", where one click adds a site to the setting -- plus any that are blocked or
+// "More sites", where one click adds a site to the setting, and an unblocked
+// row carries a remove button that takes it back out -- plus any that are blocked or
 // counting down, so taking a site out of the setting never hides a block you
 // would then forget about, nor lifts one.
 Panel {
@@ -46,11 +47,16 @@ Panel {
     var v = setting("sites", ["youtube", "twitter"])
     return Array.isArray(v) ? v : String(v).split(/[,\s]+/)
   }
-  // Names added from "More sites" whose settings write has not landed yet, so
-  // the row appears on the click rather than a moment later.
-  property var addedNames: []
+  // Adds and removes whose settings write has not landed yet ({ name: bool }),
+  // so a row comes and goes on the click rather than a moment later.
+  property var listOverrides: ({})
+  readonly property var listedNames: {
+    var names = enabledNames.filter(function(n) { return n && listOverrides[n] !== false })
+    for (var n in listOverrides) if (listOverrides[n] === true && names.indexOf(n) === -1) names.push(n)
+    return names
+  }
   readonly property var shownSites: sites.filter(function(s) {
-    return s.blocked || s.relockAt > 0 || enabledNames.indexOf(s.name) !== -1 || addedNames.indexOf(s.name) !== -1
+    return s.blocked || s.relockAt > 0 || listedNames.indexOf(s.name) !== -1
   })
   readonly property var hiddenSites: sites.filter(function(s) { return shownSites.indexOf(s) === -1 })
   property bool moreExpanded: false
@@ -153,16 +159,57 @@ Panel {
     else showSite(hiddenSites[index - moreIndex - 1])
   }
 
-  // Add a site to the `sites` setting. The shell writes shell.json itself,
-  // through its symlink, so the change lands in the dotfiles repo.
-  function showSite(site) {
+  // Save the `sites` setting in-process, the way the clock widget saves its
+  // format. Not `omarchy bar set`: its IPC hop splits arguments on commas, which
+  // breaks any JSON array longer than one element. updateEntryInline replaces
+  // the whole bar entry, so every other setting is carried over. The shell
+  // writes shell.json through its symlink, so the change lands in dotfiles.
+  function saveSites(names) {
+    if (!bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") {
+      lastError = "Could not save the site list: this bar does not allow widget settings writes."
+      return
+    }
+    var entry = { id: root.moduleName }
+    for (var key in root.settings) if (key !== "id") entry[key] = root.settings[key]
+    entry.sites = names
+    bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  // Add a site to, or take one out of, the `sites` setting.
+  function setListed(site, listed) {
     if (!site) return
-    var names = enabledNames.concat(addedNames).filter(function(n, i, all) { return n && all.indexOf(n) === i })
-    if (names.indexOf(site.name) === -1) names.push(site.name)
-    addedNames = addedNames.concat([site.name])
-    Quickshell.execDetached(["omarchy-bar", "set", root.moduleName, "sites", JSON.stringify(names), "--json"])
+    // Worked out here rather than read back from listedNames, which may not
+    // have re-evaluated yet.
+    var names = listedNames.filter(function(n) { return n !== site.name })
+    if (listed) names.push(site.name)
+    var next = Object.assign({}, listOverrides)
+    next[site.name] = listed
+    listOverrides = next
+    saveSites(names)
     if (hiddenSites.length === 0) moreExpanded = false
-    cursorIndex = Math.min(cursorIndex, cursorCount - 1)
+    cursorIndex = Math.max(0, Math.min(cursorIndex, cursorCount - 1))
+  }
+
+  function showSite(site) { setListed(site, true) }
+
+  // Only an unblocked site: a blocked one stays on screen regardless, and
+  // removing it must never be a way round a block.
+  function removable(site) { return !!site && !site.blocked }
+
+  // A site counting down to its relock would stay on screen until the relock
+  // fired and then be blocked for good, so its relock is dropped first. That
+  // is root work outside the polkit rule, so it asks for auth -- the same
+  // price as the unblock that started the countdown.
+  function removeSite(site) {
+    if (!removable(site) || forgetProc.running) return
+    if (!(site.relockAt > 0)) {
+      setListed(site, false)
+      return
+    }
+    lastError = ""
+    forgetProc.site = site
+    forgetProc.command = ["pkexec", root.helper, "forget", site.name]
+    forgetProc.running = true
   }
 
   function flip(index) {
@@ -284,6 +331,18 @@ Panel {
     }
   }
 
+  Process {
+    id: forgetProc
+    property var site: null
+    stderr: StdioCollector { id: forgetStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.setListed(forgetProc.site, false)
+      else if (exitCode !== 126) root.lastError = String(forgetStderr.text || "").trim() || ("Failed (exit " + exitCode + ")")
+      forgetProc.site = null
+      root.refresh()
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -314,6 +373,7 @@ Panel {
         root.cursorIndex = Math.max(0, Math.min(root.cursorCount - 1, root.cursorIndex + dy))
       }
       onActivateRequested: if (root.cursorActive) root.activate(root.cursorIndex)
+      onDeleteRequested: if (root.cursorActive && root.cursorIndex < root.shownSites.length) root.removeSite(root.shownSites[root.cursorIndex])
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -823,6 +883,7 @@ Panel {
       Column {
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width - siteIcon.width - siteSwitch.width - parent.spacing * 2
+          - (removeButton.visible ? removeButton.width + parent.spacing : 0)
         spacing: Style.spacing.xs
 
         Text {
@@ -845,6 +906,20 @@ Panel {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
         }
+      }
+
+      // Shown under the cursor only, so the resting panel stays a column of
+      // switches. Delete does the same from the keyboard.
+      PanelActionButton {
+        id: removeButton
+        anchors.verticalCenter: parent.verticalCenter
+        visible: siteRow.hasCursor && root.removable(siteRow.site)
+        iconText: "󰅖"
+        tooltipText: "Remove from list"
+        foreground: root.foreground
+        hoverColor: root.urgent
+        fontFamily: root.fontFamily
+        onClicked: root.removeSite(siteRow.site)
       }
 
       // The row owns the click, so the switch is presentation only.
