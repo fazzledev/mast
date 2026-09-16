@@ -1,0 +1,72 @@
+#!/bin/bash
+# Block or unblock YouTube: /etc/hosts for every program, plus a
+# Chrome/Chromium URLBlocklist policy for browsers doing their own DNS.
+#
+#   status   tab-separated state for the bar (no root needed)
+#   on       block
+#   off      unblock
+#   toggle   flip
+#
+# Chrome watches its policy directory and /etc/hosts, so both halves take
+# effect in a running browser within a few seconds -- no restart.
+
+set -euo pipefail
+
+HOSTS=/etc/hosts
+POLICY_DIRS=(/etc/chromium/policies/managed /etc/opt/chrome/policies/managed)
+POLICY_NAME=block-youtube.json
+BEGIN='# >>> block-youtube >>>'
+END='# <<< block-youtube <<<'
+
+# The hosts file cannot wildcard, so name the subdomains that matter.
+DOMAINS=(
+  youtube.com www.youtube.com m.youtube.com music.youtube.com tv.youtube.com
+  studio.youtube.com youtu.be www.youtu.be
+  youtube-nocookie.com www.youtube-nocookie.com
+  youtubei.googleapis.com youtube.googleapis.com
+  i.ytimg.com s.ytimg.com yt3.ggpht.com
+)
+
+die() { echo "block-youtube: $*" >&2; exit 1; }
+need_root() { [[ $EUID -eq 0 ]] || die "$1 needs root"; }
+
+is_blocked() { grep -qxF "$BEGIN" "$HOSTS"; }
+
+flush() { command -v resolvectl >/dev/null && resolvectl flush-caches 2>/dev/null || true; }
+
+strip_hosts() {
+  sed -i "/^$BEGIN\$/,/^$END\$/d" "$HOSTS"
+}
+
+block() {
+  need_root on
+  strip_hosts
+  {
+    echo "$BEGIN"
+    for d in "${DOMAINS[@]}"; do printf '0.0.0.0 %s\n:: %s\n' "$d" "$d"; done
+    echo "$END"
+  } >>"$HOSTS"
+  local dir
+  for dir in "${POLICY_DIRS[@]}"; do
+    install -d -m 0755 "$dir"
+    printf '%s\n' '{"URLBlocklist": ["youtube.com", "youtu.be", "youtube-nocookie.com", "ytimg.com"]}' >"$dir/$POLICY_NAME"
+    chmod 0644 "$dir/$POLICY_NAME"
+  done
+  flush
+}
+
+unblock() {
+  need_root off
+  strip_hosts
+  local dir
+  for dir in "${POLICY_DIRS[@]}"; do rm -f "$dir/$POLICY_NAME"; done
+  flush
+}
+
+case "${1:-status}" in
+  status) printf 'blocked\t%s\n' "$(is_blocked && echo 1 || echo 0)" ;;
+  on) block ;;
+  off) unblock ;;
+  toggle) if is_blocked; then unblock; else block; fi ;;
+  *) die "usage: block-youtube {status|on|off|toggle}" ;;
+esac

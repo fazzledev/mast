@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "fazzledev.youtube-block",
+  "name": "YouTube Block",
+  "version": "1.0.0",
+  "author": "fazzledev",
+  "description": "Shows whether YouTube is blocked and toggles the block, behind an auth prompt.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "YouTube Block",
+    "description": "Toggle the system-wide YouTube block from system/block-youtube. Hides itself when the helper is not installed.",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
