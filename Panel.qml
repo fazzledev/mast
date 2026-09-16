@@ -1,15 +1,20 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
 // Bar toggles for the site block in ~/.dotfiles/system/site-block.
 //
 // Reading the state needs no privileges; flipping it goes through pkexec.
-// Blocking is let straight through by a polkit rule the installer adds, while
-// unblocking raises the shell's polkit dialog. That is deliberate -- a block
-// you can lift with one stray click is not much of a block.
+// Blocking is let straight through by a polkit rule the installer adds.
+// Unblocking first opens a full-screen overlay where you type out a
+// motivational paragraph picked at random from paragraphs.txt -- around 190
+// words, so roughly five minutes, long enough for most urges to peak and pass
+// -- and only then raises the shell's polkit dialog. A block you can lift with
+// one stray click is not much of a block.
 //
 // The site list comes from the helper's status output, so adding a site there
 // adds a switch here with no change to this file.
@@ -32,12 +37,16 @@ Panel {
   property int cursorIndex: 0
   property bool cursorActive: false
 
+  // The site being unblocked in the overlay (null when it is closed), and the
+  // paragraph drawn for it.
+  property var confirmingSite: null
+  property string confirmPhrase: ""
+
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  // Everything blocked is the resting state, so it recedes; anything unblocked
-  // stands out as a reminder that it is still off.
+
   // Brand glyphs for the sites the helper knows; anything added there later
   // falls back to the shield until it gets one here. The font has no X logo,
   // so X keeps the bird.
@@ -48,12 +57,34 @@ Panel {
   readonly property var siteColors: ({ youtube: "#ff0000", twitter: "#1da1f2" })
   function siteColor(name) { return siteColors[name] || root.urgent }
 
+  // Everything blocked is the resting state, so it recedes; anything unblocked
+  // stands out as a reminder that it is still off.
   readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
   readonly property color barIconColor: allBlocked ? Qt.darker(barForeground, 1.55) : urgent
+
+  // Blank-line separated paragraphs from paragraphs.txt, whitespace collapsed
+  // so line wrapping in the file never has to be typed.
+  property var paragraphs: []
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
   implicitHeight: button.implicitHeight
+
+  function normalise(text) {
+    return String(text || "").replace(/\s+/g, " ")
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  }
+
+  function pickParagraph() {
+    if (paragraphs.length === 0) return ""
+    var next = paragraphs[Math.floor(Math.random() * paragraphs.length)]
+    // Never the same one twice running when there is a choice.
+    if (paragraphs.length > 1 && next === confirmPhrase) return pickParagraph()
+    return next
+  }
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
@@ -70,7 +101,29 @@ Panel {
 
   function flip(index) {
     var site = sites[index]
-    if (site) setBlocked(site, !site.blocked)
+    if (!site || toggleProc.running) return
+    if (!site.blocked) {
+      setBlocked(site, true)
+      return
+    }
+    var phrase = pickParagraph()
+    if (phrase === "") {
+      lastError = "No paragraphs to type -- paragraphs.txt is missing or empty."
+      return
+    }
+    confirmPhrase = phrase
+    confirmingSite = site
+    close()
+  }
+
+  function cancelConfirm() {
+    confirmingSite = null
+  }
+
+  function finishConfirm() {
+    var site = confirmingSite
+    confirmingSite = null
+    setBlocked(site, false)
   }
 
   function applyStatus(raw) {
@@ -89,6 +142,17 @@ Panel {
     cursorActive = false
     refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  FileView {
+    path: String(Qt.resolvedUrl("paragraphs.txt")).replace(/^file:\/\//, "")
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.paragraphs = String(text() || "").split(/\n\s*\n/)
+      .map(function(p) { return root.normalise(p).trim() })
+      .filter(function(p) { return p !== "" })
+    onLoadFailed: root.paragraphs = []
   }
 
   Timer {
@@ -201,6 +265,192 @@ Panel {
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------ unblock overlay
+  PanelWindow {
+    id: overlay
+    visible: root.confirmingSite !== null
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "fazzledev-site-block"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    exclusionMode: ExclusionMode.Ignore
+
+    onVisibleChanged: if (visible) {
+      phraseField.text = ""
+      phraseField.lastText = ""
+      phraseField.lastGood = 0
+      Qt.callLater(function() { phraseField.forceActiveFocus() })
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      color: Color.menu.scrim
+    }
+
+    // Swallow clicks on the scrim. Walking away should be a decision -- Esc --
+    // not a stray click beside the card.
+    MouseArea {
+      anchors.fill: parent
+      onClicked: phraseField.forceActiveFocus()
+    }
+
+    BorderSurface {
+      id: card
+      anchors.centerIn: parent
+      width: Math.min(Style.space(760), overlay.width - Style.gapsOut * 4)
+      height: cardBody.implicitHeight + contentTopInset + contentBottomInset
+      radius: Style.cornerRadius
+      color: Color.menu.background
+      borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+      padding: Style.spacing.panelPadding * 1.5
+
+      readonly property color text: Color.menu.text
+      readonly property color faint: Qt.darker(Color.menu.text, 1.6)
+      readonly property string siteName: root.confirmingSite ? root.confirmingSite.name : ""
+
+      Column {
+        id: cardBody
+        anchors.fill: parent
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+        spacing: Style.space(16)
+
+        Row {
+          spacing: Style.space(14)
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.siteGlyph(card.siteName)
+            color: root.siteColor(card.siteName)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.display
+          }
+
+          Column {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(2)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
+              color: card.text
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Type this out first. Take your time -- the urge will pass while you do."
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+
+        // What is typed so far in full colour, the rest faint. Styled text is
+        // not selectable, so the paragraph cannot be copied into the field.
+        Text {
+          width: parent.width
+          textFormat: Text.StyledText
+          text: {
+            var done = phraseField.progress
+            return "<font color='" + card.text + "'>" + root.escapeHtml(root.confirmPhrase.slice(0, done)) + "</font>"
+              + "<font color='" + card.faint + "'>" + root.escapeHtml(root.confirmPhrase.slice(done)) + "</font>"
+          }
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.heading
+          lineHeight: 1.35
+          wrapMode: Text.WordWrap
+        }
+
+        TextArea {
+          id: phraseField
+          // A typo is still shown, just in red, so it can be fixed; progress
+          // holds at the last point the text was right.
+          property string lastText: ""
+          property int lastGood: 0
+          readonly property string typed: root.normalise(text)
+          readonly property bool onTrack: root.confirmPhrase.indexOf(typed) === 0
+          readonly property int progress: onTrack ? typed.length : lastGood
+
+          width: parent.width
+          height: Math.max(Style.space(120), implicitHeight)
+          wrapMode: TextArea.Wrap
+          placeholderText: "Start typing…"
+          color: onTrack ? card.text : root.urgent
+          placeholderTextColor: card.faint
+          selectionColor: Style.selectionFillFor(card.text, Color.accent)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          padding: Style.space(10)
+          background: BorderSurface {
+            color: "transparent"
+            borderSpec: Border.controlSpec(phraseField.activeFocus ? "focus" : "normal", card.text, Color.accent)
+            radius: Style.cornerRadius
+          }
+
+          onTextChanged: {
+            // More than a few characters arriving at once is a paste --
+            // middle-click included -- so put the text back.
+            if (text.length - lastText.length > 3) {
+              text = lastText
+              cursorPosition = text.length
+              return
+            }
+            lastText = text
+            // Worked out here rather than read from the bindings above, which
+            // are not guaranteed to have caught up with this change yet.
+            var now = root.normalise(text)
+            if (root.confirmPhrase.indexOf(now) === 0) lastGood = now.length
+            if (now.trim() === root.confirmPhrase) root.finishConfirm()
+          }
+          Keys.onPressed: function(event) {
+            if (event.matches(StandardKey.Paste)) event.accepted = true
+          }
+          Keys.onReturnPressed: function(event) { event.accepted = true }
+          Keys.onEnterPressed: function(event) { event.accepted = true }
+          Keys.onEscapePressed: function(event) {
+            event.accepted = true
+            root.cancelConfirm()
+          }
+        }
+
+        Item {
+          width: parent.width
+          height: progressText.implicitHeight
+
+          Text {
+            id: progressText
+            textFormat: Text.PlainText
+            anchors.left: parent.left
+            readonly property int wordsDone: phraseField.progress === 0 ? 0 : root.confirmPhrase.slice(0, phraseField.progress).trim().split(" ").length
+            readonly property int wordsTotal: root.confirmPhrase.split(" ").length
+            text: phraseField.onTrack
+              ? wordsDone + " of " + wordsTotal + " words"
+              : "Typo -- fix it to keep going"
+            color: phraseField.onTrack ? card.faint : root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            anchors.right: parent.right
+            text: "Esc to keep it blocked"
+            color: card.faint
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
         }
       }
     }
