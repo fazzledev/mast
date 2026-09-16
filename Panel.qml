@@ -10,12 +10,17 @@ import qs.Ui
 //
 // Reading the state needs no privileges; flipping it goes through pkexec.
 // Blocking is let straight through by a polkit rule the installer adds.
-// Unblocking first opens a full-screen overlay where you type out a
-// motivational paragraph picked at random from paragraphs.txt -- around 190
-// words, so roughly five minutes, long enough for most urges to peak and pass
-// -- then asks once more, plainly, whether you still want it unblocked, and
-// only on a yes raises the shell's polkit dialog. A block you can lift with
-// one stray click is not much of a block.
+// Unblocking first opens a full-screen overlay where you type out a passage
+// of around 190 words -- roughly five minutes, long enough for most urges to
+// peak and pass -- then asks once more, plainly, whether you still want it
+// unblocked, and only on a yes raises the shell's polkit dialog. A block you
+// can lift with one stray click is not much of a block.
+//
+// Passages come from two pools mixed together: the hand-written ones in
+// paragraphs.txt, and excerpts that fetch-passages.rb pulls from books,
+// blogs and news articles and keeps in a cache, each shown with its source
+// and a link. The script refreshes that cache once a week; this widget just
+// runs it every few hours and it returns at once until the week is up.
 //
 // Every unblock is temporary: the helper arms a systemd timer that blocks the
 // site again, and each row counts down to it.
@@ -77,6 +82,8 @@ Panel {
   // paragraph drawn for it.
   property var confirmingSite: null
   property string confirmPhrase: ""
+  property string confirmSource: ""
+  property string confirmUrl: ""
   // Typing done; the overlay is on its yes/no question.
   property bool confirmAsking: false
 
@@ -102,14 +109,21 @@ Panel {
   })
   function siteColor(name) { return siteColors[name] || root.urgent }
 
-  // Everything blocked is the resting state, so it recedes; anything unblocked
-  // stands out as a reminder that it is still off.
+  // The theme's terminal green from colors.toml, which the shell's Color does
+  // not expose. Everything blocked shows in it; anything unblocked stands out
+  // in urgent as a reminder that it is still off.
+  property color green: "#4caf50"
   readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
-  readonly property color barIconColor: allBlocked ? Qt.darker(barForeground, 1.55) : urgent
+  readonly property color barIconColor: allBlocked ? green : urgent
 
-  // Blank-line separated paragraphs from paragraphs.txt, whitespace collapsed
-  // so line wrapping in the file never has to be typed.
+  // [{ text, source, url }]. Blank-line separated paragraphs from
+  // paragraphs.txt, whitespace collapsed so line wrapping in the file never
+  // has to be typed, with no source...
   property var paragraphs: []
+  // ...and the fetched excerpts, which have one.
+  property var fetchedPassages: []
+  readonly property var passages: paragraphs.concat(fetchedPassages)
+  readonly property string passageCache: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/fazzledev-site-block/passages.json"
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
@@ -123,11 +137,11 @@ Panel {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   }
 
-  function pickParagraph() {
-    if (paragraphs.length === 0) return ""
-    var next = paragraphs[Math.floor(Math.random() * paragraphs.length)]
+  function pickPassage() {
+    if (passages.length === 0) return null
+    var next = passages[Math.floor(Math.random() * passages.length)]
     // Never the same one twice running when there is a choice.
-    if (paragraphs.length > 1 && next === confirmPhrase) return pickParagraph()
+    if (passages.length > 1 && next.text === confirmPhrase) return pickPassage()
     return next
   }
 
@@ -219,12 +233,14 @@ Panel {
       setBlocked(site, true)
       return
     }
-    var phrase = pickParagraph()
-    if (phrase === "") {
-      lastError = "No paragraphs to type -- paragraphs.txt is missing or empty."
+    var passage = pickPassage()
+    if (!passage) {
+      lastError = "No passages to type -- paragraphs.txt is missing or empty, and nothing has been fetched."
       return
     }
-    confirmPhrase = phrase
+    confirmPhrase = passage.text
+    confirmSource = passage.source
+    confirmUrl = passage.url
     confirmAsking = false
     confirmingSite = site
     close()
@@ -280,6 +296,17 @@ Panel {
   }
 
   FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var m = String(text() || "").match(/^\s*green\s*=\s*"(#[0-9a-fA-F]{6,8})"/m)
+      if (m) root.green = m[1]
+    }
+  }
+
+  FileView {
     path: String(Qt.resolvedUrl("paragraphs.txt")).replace(/^file:\/\//, "")
     watchChanges: true
     printErrors: false
@@ -287,7 +314,42 @@ Panel {
     onLoaded: root.paragraphs = String(text() || "").split(/\n\s*\n/)
       .map(function(p) { return root.normalise(p).trim() })
       .filter(function(p) { return p !== "" })
+      .map(function(p) { return { text: p, source: "", url: "" } })
     onLoadFailed: root.paragraphs = []
+  }
+
+  FileView {
+    id: passageFile
+    path: root.passageCache
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var list = []
+      try { list = JSON.parse(text() || "[]") } catch (e) {}
+      root.fetchedPassages = (Array.isArray(list) ? list : []).filter(function(p) {
+        return p && typeof p.text === "string" && p.text.trim() !== ""
+      }).map(function(p) {
+        return { text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || "") }
+      })
+    }
+    onLoadFailed: root.fetchedPassages = []
+  }
+
+  // Every few hours, so a missed week (asleep, offline) is caught up soon.
+  Timer {
+    interval: 6 * 3600 * 1000
+    repeat: true
+    running: true
+    triggeredOnStart: true
+    onTriggered: if (!fetchProc.running) fetchProc.running = true
+  }
+
+  Process {
+    id: fetchProc
+    command: ["ruby", String(Qt.resolvedUrl("fetch-passages.rb")).replace(/^file:\/\//, "")]
+    // The watch misses the cache being created for the first time.
+    onExited: passageFile.reload()
   }
 
   Timer {
@@ -391,7 +453,7 @@ Panel {
           iconComponent: Component {
             Text {
               text: root.barGlyph
-              color: root.allBlocked ? root.dim : root.urgent
+              color: root.barIconColor
               font.family: root.fontFamily
               font.pixelSize: Style.font.display
             }
@@ -550,6 +612,48 @@ Panel {
           font.pixelSize: Style.font.heading
           lineHeight: 1.35
           wrapMode: Text.WordWrap
+        }
+
+        // Where the passage is from. The link opens behind this overlay, to
+        // read once you are done here.
+        Column {
+          visible: !root.confirmAsking && root.confirmSource !== ""
+          width: parent.width
+          spacing: Style.space(2)
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: "-- " + root.confirmSource
+            color: card.faint
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.italic: true
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: root.confirmUrl !== ""
+            textFormat: Text.PlainText
+            width: parent.width
+            text: root.confirmUrl
+            color: sourceLink.containsMouse ? card.text : card.faint
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.underline: true
+            elide: Text.ElideMiddle
+
+            MouseArea {
+              id: sourceLink
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                Qt.openUrlExternally(root.confirmUrl)
+                phraseField.forceActiveFocus()
+              }
+            }
+          }
         }
 
         TextArea {
@@ -929,7 +1033,8 @@ Panel {
         checked: siteRow.blocked
         busy: siteRow.pending
         interactive: false
-        foreground: root.foreground
+        foreground: root.allBlocked ? root.green : root.foreground
+        accent: root.allBlocked ? root.green : Color.accent
       }
     }
   }
