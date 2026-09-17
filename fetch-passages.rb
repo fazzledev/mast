@@ -286,7 +286,8 @@ def article_candidates(family, articles, limit)
   best = articles.filter_map do |source, url, raw_paragraphs|
     paragraphs = raw_paragraphs.map do |raw|
       p = html_text(raw)
-      p && !p.match?(NOISE) ? p : nil
+      # Short ones are subheadings and "~~~" dividers: breaks, not text.
+      p && !p.match?(NOISE) && p.split.length >= 6 ? p : nil
     end
     top = windows(paragraphs).max_by { |s| topic_score(s[2]) }
     top && { "text" => top[2], "source" => source, "url" => url, "family" => family }

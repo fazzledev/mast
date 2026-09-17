@@ -22,6 +22,12 @@ import qs.Ui
 // and a link. The script refreshes that cache once a week; this widget just
 // runs it every few hours and it returns at once until the week is up.
 //
+// Before the yes/no, the question page shows the passage again with how the
+// typing went, and asks why you want the site. Each attempt -- the passages
+// shown, how far each got, the answer, and how it ended -- goes to a SQLite
+// record through site-block-db.rb, which also serves the week's numbers shown
+// here and lets you look back at your reasons from a terminal.
+//
 // Every unblock is temporary: the helper arms a systemd timer that blocks the
 // site again, and each row counts down to it.
 //
@@ -89,6 +95,20 @@ Panel {
   property string confirmUrl: ""
   // Typing done; the overlay is on its yes/no question.
   property bool confirmAsking: false
+  // The attempt being recorded, the number of the passage view within it,
+  // and the typing figures once a passage is finished:
+  // { seconds, words, wpm, peakWpm, typos }.
+  property string attemptId: ""
+  property int viewSeq: -1
+  property var typedSummary: null
+  // The attempt waiting on the password prompt, and its answer to why.
+  property string authAttempt: ""
+  property string authReason: ""
+  // Set when yes is chosen before the why is answered.
+  property bool reasonMissing: false
+  // `site-block-db stats`: the last seven days, overall and per site, as
+  // { attempts, stayed, unblocked, unblocked_seconds, open_reason }.
+  property var stats: ({ week: {}, sites: {} })
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -153,6 +173,9 @@ Panel {
   function showPassage(index) {
     var passage = passages[index]
     if (!passage) return
+    if (attemptId !== "" && viewSeq >= 0) {
+      record({ type: "leave", attempt: attemptId, seq: viewSeq, chars: phraseField.lastGood })
+    }
     confirmIndex = index
     confirmPhrase = passage.text
     confirmSource = passage.source
@@ -163,7 +186,14 @@ Panel {
     phraseField.progressLog = []
     phraseField.startedAt = 0
     phraseField.wpm = 0
+    phraseField.peakWpm = 0
+    phraseField.typos = 0
+    phraseField.wasOnTrack = true
     phraseField.forceActiveFocus()
+    if (attemptId !== "") {
+      viewSeq += 1
+      record({ type: "passage", attempt: attemptId, seq: viewSeq, text: passage.text, source: passage.source, url: passage.url })
+    }
   }
 
   function stepPassage(delta) {
@@ -173,6 +203,74 @@ Panel {
 
   function shufflePassage() {
     if (passages.length > 1) showPassage(randomPassageIndex())
+  }
+
+  readonly property string dbScript: String(Qt.resolvedUrl("site-block-db.rb")).replace(/^file:\/\//, "")
+  // [{ json, db }]; the database is fixed when the event is queued.
+  property var dbQueue: []
+
+  // Test mode (see the `fazzledev.site-block.test` IPC target below) keeps
+  // its attempts in a throwaway database.
+  property bool testMode: false
+  readonly property string testDb: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/fazzledev-site-block-test.sqlite3"
+  function dbArgs() {
+    return testMode ? ["ruby", dbScript, "--db", testDb] : ["ruby", dbScript]
+  }
+
+  // Events are stamped here and written one process at a time, so they land
+  // in the order they happened.
+  function record(event) {
+    event.at = Date.now()
+    dbQueue.push({ json: JSON.stringify(event), args: dbArgs() })
+    drainDb()
+  }
+
+  function drainDb() {
+    if (dbProc.running || dbQueue.length === 0) return
+    var next = dbQueue.shift()
+    dbProc.command = next.args.concat(["record", next.json])
+    dbProc.running = true
+  }
+
+  function refreshStats() {
+    if (statsProc.running) return
+    statsProc.command = dbArgs().concat(["stats"])
+    statsProc.running = true
+  }
+
+  function siteStats(name) {
+    return (stats.sites && stats.sites[name]) || { attempts: 0, stayed: 0, unblocked: 0, unblocked_seconds: 0 }
+  }
+
+  function formatDuration(seconds) {
+    seconds = Math.round(seconds)
+    if (seconds < 60) return seconds + "s"
+    if (seconds < 3600) return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
+    return Math.floor(seconds / 3600) + "h " + Math.floor(seconds % 3600 / 60) + "m"
+  }
+
+  // Every attempt that did not end in an unblock is a battle won.
+  function battlesText() {
+    var all = stats.week || {}
+    return all.stayed + " of " + all.attempts + " unblock " + (all.attempts === 1 ? "battle" : "battles") + " won"
+  }
+
+  // The week so far, as a reminder on both overlay pages.
+  function weekText(site) {
+    if (!site) return ""
+    var here = siteStats(site.name)
+    var all = stats.week || {}
+    var parts = []
+    if (here.unblocked > 0) {
+      parts.push("You unblocked " + site.label + " " + (here.unblocked === 1 ? "once" : here.unblocked + " times")
+        + " in the last week, for " + Math.round(here.unblocked_seconds / 60) + " min.")
+    }
+    if (all.attempts > 0) parts.push(battlesText() + " this week.")
+    return parts.join(" ")
+  }
+
+  function reasonGiven() {
+    return reasonField.text.trim().split(/\s+/).filter(function(w) { return w !== "" }).length >= 3
   }
 
   // Seconds since the epoch, ticking while anything is counting down.
@@ -263,34 +361,85 @@ Panel {
       setBlocked(site, true)
       return
     }
-    var index = randomPassageIndex()
-    if (index < 0) {
-      lastError = "No passages to type -- paragraphs.txt is missing or empty, and nothing has been fetched."
-      return
-    }
-    showPassage(index)
-    confirmAsking = false
-    confirmingSite = site
+    beginAttempt(site)
     close()
   }
 
+  // Opens the overlay on a new attempt to unblock `site`.
+  function beginAttempt(site) {
+    var index = randomPassageIndex()
+    if (index < 0) {
+      lastError = "No passages to type -- paragraphs.txt is missing or empty, and nothing has been fetched."
+      return false
+    }
+    attemptId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+    viewSeq = -1
+    typedSummary = null
+    record({ type: "start", attempt: attemptId, site: site.name, label: site.label })
+    showPassage(index)
+    confirmAsking = false
+    confirmingSite = site
+    refreshStats()
+    return true
+  }
+
+  // Esc while typing is walking away; no on the question keeps the block,
+  // with whatever was written as the reason.
   function cancelConfirm() {
+    if (attemptId !== "") {
+      if (confirmAsking) {
+        record({ type: "end", attempt: attemptId, outcome: "kept_blocked", reason: reasonField.text })
+      } else {
+        record({ type: "leave", attempt: attemptId, seq: viewSeq, chars: phraseField.lastGood })
+        record({ type: "end", attempt: attemptId, outcome: "walked_away" })
+      }
+    }
+    attemptId = ""
     confirmingSite = null
     confirmAsking = false
   }
 
   function askConfirm() {
+    var f = phraseField
+    var ms = Math.max(1000, Date.now() - f.startedAt)
+    var wpm = Math.round(f.lastGood / 5 / (ms / 60000))
+    typedSummary = {
+      seconds: ms / 1000,
+      words: confirmPhrase.split(" ").length,
+      wpm: wpm,
+      peakWpm: Math.max(f.peakWpm, wpm),
+      typos: f.typos
+    }
+    record({ type: "typed", attempt: attemptId, seq: viewSeq, chars: f.lastGood, typing_ms: ms,
+             wpm: wpm, peak_wpm: typedSummary.peakWpm, typos: f.typos })
+    reasonField.text = ""
+    reasonMissing = false
     confirmAsking = true
-    // No is the default: Enter straight after the last keystroke keeps the
-    // block.
+    // No is the default: Enter from the buttons straight away keeps the block.
     askKeys.yesSelected = false
-    Qt.callLater(function() { askKeys.forceActiveFocus() })
+    Qt.callLater(function() { reasonField.forceActiveFocus() })
   }
 
+  // A reason of a few words is the price of yes.
   function finishConfirm() {
+    if (!reasonGiven()) {
+      reasonMissing = true
+      reasonField.forceActiveFocus()
+      return
+    }
     var site = confirmingSite
+    authAttempt = attemptId
+    authReason = reasonField.text.trim()
+    attemptId = ""
     confirmingSite = null
     confirmAsking = false
+    if (testMode) {
+      // Nothing is unblocked and no password prompt appears; the record
+      // shows what a successful unblock would have written.
+      record({ type: "end", attempt: authAttempt, reason: authReason, outcome: "unblocked" })
+      authAttempt = ""
+      return
+    }
     setBlocked(site, false)
   }
 
@@ -307,7 +456,13 @@ Panel {
     var closing = []
     next.forEach(function(site) {
       var before = sites.filter(function(s) { return s.name === site.name })[0]
-      if (before && !before.blocked && site.blocked) closing.push(site.name)
+      if (!before) return
+      if (!before.blocked && site.blocked) {
+        closing.push(site.name)
+        record({ type: "blocked_again", site: site.name })
+      } else if (before.blocked && !site.blocked && site.relockAt > 0) {
+        record({ type: "relock", site: site.name, relock_at: site.relockAt })
+      }
     })
     if (closing.length > 0) {
       Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, "")].concat(closing))
@@ -320,7 +475,87 @@ Panel {
     cursorActive = false
     moreExpanded = false
     refresh()
+    refreshStats()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  // Test mode, for checking the overlay end to end without a real unblock:
+  //
+  //   omarchy-shell fazzledev.site-block.test start youtube   open an attempt
+  //   omarchy-shell fazzledev.site-block.test type 12          type the passage, 12 ms a character
+  //   omarchy-shell fazzledev.site-block.test reason "..."     answer why
+  //   omarchy-shell fazzledev.site-block.test answer no        or yes, or esc
+  //   omarchy-shell fazzledev.site-block.test state            what the overlay shows, as JSON
+  //   omarchy-shell fazzledev.site-block.test stop             close it and leave test mode
+  //
+  // Typing is fed into the field from here, never through the keyboard. The
+  // overlay takes no keyboard focus, says TEST MODE, writes to a throwaway
+  // database in $XDG_RUNTIME_DIR, and "yes" unblocks nothing.
+  IpcHandler {
+    target: "fazzledev.site-block.test"
+
+    function start(site: string): string {
+      if (root.confirmingSite !== null && !root.testMode) return "a real attempt is open"
+      root.testMode = true
+      var found = root.sites.filter(function(s) { return s.name === site })[0]
+      root.beginAttempt(found || { name: site, label: site, blocked: true, relockAt: 0 })
+      return root.confirmPhrase
+    }
+
+    function type(msPerChar: int): string {
+      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
+      testTyper.interval = Math.max(1, msPerChar)
+      testTyper.start()
+      return "typing " + (root.confirmPhrase.length - phraseField.lastGood) + " characters"
+    }
+
+    function reason(text: string): string {
+      if (!root.testMode || !root.confirmAsking) return "not asking"
+      reasonField.text = text
+      return "ok"
+    }
+
+    function answer(choice: string): string {
+      if (!root.testMode || root.confirmingSite === null) return "no test attempt"
+      testTyper.stop()
+      if (choice === "yes") root.finishConfirm()
+      else root.cancelConfirm()
+      return root.confirmingSite === null ? "closed" : "still open: " + (root.reasonMissing ? "reason missing" : "?")
+    }
+
+    function state(): string {
+      return JSON.stringify({
+        testMode: root.testMode,
+        open: root.confirmingSite !== null,
+        asking: root.confirmAsking,
+        progress: phraseField.lastGood + "/" + root.confirmPhrase.length,
+        wpm: phraseField.wpm,
+        typos: phraseField.typos,
+        summary: root.typedSummary,
+        reasonMissing: root.reasonMissing,
+        stats: root.stats
+      })
+    }
+
+    function stop(): string {
+      testTyper.stop()
+      if (root.testMode && root.confirmingSite !== null) root.cancelConfirm()
+      root.testMode = false
+      root.refreshStats()
+      return "ok"
+    }
+  }
+
+  // Test mode's typist: one character a tick, through the same onTextChanged
+  // path a keystroke takes.
+  Timer {
+    id: testTyper
+    repeat: true
+    onTriggered: {
+      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) { stop(); return }
+      var typed = phraseField.text
+      phraseField.text = typed + root.confirmPhrase.charAt(root.normalise(typed).length)
+    }
   }
 
   FileView {
@@ -413,6 +648,11 @@ Panel {
     stderr: StdioCollector { id: toggleStderr; waitForEnd: true }
     onExited: function(exitCode) {
       root.pendingSite = ""
+      if (root.authAttempt !== "") {
+        root.record({ type: "end", attempt: root.authAttempt, reason: root.authReason,
+                      outcome: exitCode === 0 ? "unblocked" : exitCode === 126 ? "auth_dismissed" : "failed" })
+        root.authAttempt = ""
+      }
       // 126 is pkexec's "dismissed the dialog" -- not worth an error line.
       if (exitCode !== 0 && exitCode !== 126) {
         root.lastError = String(toggleStderr.text || "").trim() || ("Failed (exit " + exitCode + ")")
@@ -420,6 +660,28 @@ Panel {
       root.refresh()
     }
   }
+
+  Process {
+    id: dbProc
+    stderr: StdioCollector { id: dbStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) console.warn("site-block-db: " + String(dbStderr.text || "").trim())
+      if (root.dbQueue.length > 0) root.drainDb()
+      else root.refreshStats()
+    }
+  }
+
+  Process {
+    id: statsProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.stats = JSON.parse(text) } catch (e) {}
+      }
+    }
+  }
+
+  Component.onCompleted: refreshStats()
 
   Process {
     id: forgetProc
@@ -475,7 +737,7 @@ Panel {
         PanelHero {
           width: parent.width
           title: "Site Block"
-          meta: root.blockedCount + " of " + root.shownSites.length + " blocked"
+          meta: root.blockedCount + " of " + root.shownSites.length + " sites blocked"
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconComponent: Component {
@@ -486,6 +748,18 @@ Panel {
               font.pixelSize: Style.font.display
             }
           }
+        }
+
+        Text {
+          visible: text !== ""
+          width: parent.width
+          textFormat: Text.PlainText
+          text: root.stats.week && root.stats.week.attempts > 0
+            ? root.battlesText() + " this week" : ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          wrapMode: Text.WordWrap
         }
 
         Column {
@@ -544,7 +818,8 @@ Panel {
     color: "transparent"
     WlrLayershell.namespace: "fazzledev-site-block"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    // Test mode must never take the keyboard from whatever you are doing.
+    WlrLayershell.keyboardFocus: root.testMode ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
     // showPassage has already cleared the field; focus only lands once the
@@ -603,7 +878,7 @@ Panel {
 
             Text {
               textFormat: Text.PlainText
-              text: "Unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
+              text: (root.testMode ? "TEST MODE -- " : "") + "Unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
               color: card.text
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
@@ -613,13 +888,25 @@ Panel {
             Text {
               textFormat: Text.PlainText
               text: root.confirmAsking
-                ? "You typed it all out. One last question."
+                ? "You typed it all out. Two questions before you decide."
                 : "Type this out first. Take your time -- the urge will pass while you do."
               color: card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
           }
+        }
+
+        Text {
+          readonly property string week: root.weekText(root.confirmingSite)
+          visible: week !== ""
+          width: parent.width
+          textFormat: Text.PlainText
+          text: week
+          color: card.text
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.WordWrap
         }
 
         // What is typed so far in full colour, the rest faint. Styled text is
@@ -747,6 +1034,11 @@ Panel {
           property var progressLog: [] // [{ t, chars }], plus the last entry before the window
           property real startedAt: 0
           property int wpm: 0
+          // Past the first few seconds, when the figure has settled.
+          property int peakWpm: 0
+          // Times the text went from matching to not.
+          property int typos: 0
+          property bool wasOnTrack: true
 
           function logProgress() {
             var now = Date.now()
@@ -764,6 +1056,7 @@ Panel {
             // a burst of hundreds.
             var minutes = Math.max(now - from, 2000) / 60000
             wpm = Math.max(0, Math.round((lastGood - base) / 5 / minutes))
+            if (now - startedAt >= 5000) peakWpm = Math.max(peakWpm, wpm)
           }
 
           // Ticks so the figure falls off when typing stops, not only when a
@@ -807,7 +1100,10 @@ Panel {
             // Worked out here rather than read from the bindings above, which
             // are not guaranteed to have caught up with this change yet.
             var now = root.normalise(text)
-            if (root.confirmPhrase.indexOf(now) === 0) lastGood = now.length
+            var matches = root.confirmPhrase.indexOf(now) === 0
+            if (matches) lastGood = now.length
+            if (wasOnTrack && !matches) typos += 1
+            wasOnTrack = matches
             if (text !== "") logProgress()
             if (now.trim() === root.confirmPhrase) root.askConfirm()
           }
@@ -859,88 +1155,210 @@ Panel {
           }
         }
 
-        // The yes/no step. Keys live on this item so the buttons stay plain.
-        Item {
-          id: askKeys
+        // The question page: the passage again with how the typing went, why
+        // you want the site, then yes or no.
+        Column {
           visible: root.confirmAsking
           width: parent.width
-          height: askColumn.implicitHeight
-          focus: root.confirmAsking
+          spacing: Style.space(16)
 
-          property bool yesSelected: false
-
-          Keys.onPressed: function(event) {
-            switch (event.key) {
-            case Qt.Key_Left:
-            case Qt.Key_Right:
-            case Qt.Key_Tab:
-            case Qt.Key_Backtab:
-              askKeys.yesSelected = !askKeys.yesSelected
-              break
-            case Qt.Key_Return:
-            case Qt.Key_Enter:
-            case Qt.Key_Space:
-              if (askKeys.yesSelected) root.finishConfirm()
-              else root.cancelConfirm()
-              break
-            case Qt.Key_Y:
-              root.finishConfirm()
-              break
-            case Qt.Key_N:
-            case Qt.Key_Escape:
-              root.cancelConfirm()
-              break
-            default:
-              return
-            }
-            event.accepted = true
+          Text {
+            visible: root.typedSummary !== null
+            width: parent.width
+            textFormat: Text.PlainText
+            text: root.typedSummary
+              ? root.typedSummary.words + " words in " + root.formatDuration(root.typedSummary.seconds)
+                + "  ·  " + root.typedSummary.wpm + " wpm average"
+                + "  ·  " + root.typedSummary.peakWpm + " wpm peak"
+                + "  ·  " + root.typedSummary.typos + (root.typedSummary.typos === 1 ? " typo" : " typos")
+              : ""
+            color: card.faint
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
 
           Column {
-            id: askColumn
             width: parent.width
-            spacing: Style.space(18)
+            spacing: Style.space(6)
 
             Text {
-              textFormat: Text.PlainText
               width: parent.width
-              text: "Do you still want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "? It blocks itself again after a while."
+              textFormat: Text.PlainText
+              text: root.confirmPhrase
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              lineHeight: 1.25
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              visible: root.confirmSource !== ""
+              width: parent.width
+              textFormat: Text.PlainText
+              text: "-- " + root.confirmSource
+              color: card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.italic: true
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              text: "Why do you want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "?"
               color: card.text
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
               wrapMode: Text.WordWrap
             }
 
-            Row {
-              spacing: Style.space(10)
-
-              Button {
-                text: "No, keep it blocked"
-                bordered: true
-                hasCursor: !askKeys.yesSelected
-                foreground: card.text
-                fontFamily: root.fontFamily
-                onHovered: function(on) { if (on) askKeys.yesSelected = false }
-                onClicked: root.cancelConfirm()
+            TextArea {
+              id: reasonField
+              width: parent.width
+              height: Math.max(Style.space(72), implicitHeight)
+              wrapMode: TextArea.Wrap
+              placeholderText: "What are you going there for?"
+              color: card.text
+              placeholderTextColor: card.faint
+              selectionColor: Style.selectionFillFor(card.text, Color.accent)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              padding: Style.space(10)
+              background: BorderSurface {
+                color: "transparent"
+                borderSpec: Border.controlSpec(reasonField.activeFocus ? "focus" : "normal",
+                                               root.reasonMissing ? root.urgent : card.text, Color.accent)
+                radius: Style.cornerRadius
               }
 
-              Button {
-                text: "Yes, unblock"
-                bordered: true
-                hasCursor: askKeys.yesSelected
-                foreground: card.text
-                fontFamily: root.fontFamily
-                onHovered: function(on) { if (on) askKeys.yesSelected = true }
-                onClicked: root.finishConfirm()
+              onTextChanged: if (root.reasonGiven()) root.reasonMissing = false
+              // Enter and Tab move on to the buttons; Shift+Enter is a new line.
+              Keys.onReturnPressed: function(event) {
+                if (event.modifiers & Qt.ShiftModifier) return
+                event.accepted = true
+                askKeys.forceActiveFocus()
+              }
+              Keys.onEnterPressed: function(event) {
+                event.accepted = true
+                askKeys.forceActiveFocus()
+              }
+              Keys.onTabPressed: function(event) {
+                event.accepted = true
+                askKeys.forceActiveFocus()
+              }
+              Keys.onEscapePressed: function(event) {
+                event.accepted = true
+                root.cancelConfirm()
               }
             }
 
             Text {
+              width: parent.width
               textFormat: Text.PlainText
-              text: "Y / N  ·  Esc keeps it blocked"
-              color: card.faint
+              text: root.reasonMissing
+                ? "Answer this first -- a few words -- to unblock."
+                : "Saved with this attempt whatever you decide, so you can look back at your reasons later: site-block-db reasons"
+              color: root.reasonMissing ? root.urgent : card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          // The yes/no. Keys live on this item so the buttons stay plain.
+          Item {
+            id: askKeys
+            width: parent.width
+            height: askColumn.implicitHeight
+
+            property bool yesSelected: false
+
+            Keys.onPressed: function(event) {
+              switch (event.key) {
+              case Qt.Key_Left:
+              case Qt.Key_Right:
+              case Qt.Key_Tab:
+                askKeys.yesSelected = !askKeys.yesSelected
+                break
+              case Qt.Key_Up:
+              case Qt.Key_Backtab:
+                reasonField.forceActiveFocus()
+                break
+              case Qt.Key_Return:
+              case Qt.Key_Enter:
+              case Qt.Key_Space:
+                if (askKeys.yesSelected) root.finishConfirm()
+                else root.cancelConfirm()
+                break
+              case Qt.Key_Y:
+                root.finishConfirm()
+                break
+              case Qt.Key_N:
+              case Qt.Key_Escape:
+                root.cancelConfirm()
+                break
+              default:
+                return
+              }
+              event.accepted = true
+            }
+
+            Column {
+              id: askColumn
+              width: parent.width
+              spacing: Style.space(12)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Do you still want to unblock " + (root.confirmingSite ? root.confirmingSite.label : "") + "? It blocks itself again after a while."
+                color: card.text
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.heading
+                wrapMode: Text.WordWrap
+              }
+
+              Row {
+                spacing: Style.space(10)
+
+                Button {
+                  text: "No, keep it blocked"
+                  bordered: true
+                  hasCursor: askKeys.activeFocus && !askKeys.yesSelected
+                  foreground: card.text
+                  fontFamily: root.fontFamily
+                  onHovered: function(on) { if (on) askKeys.yesSelected = false }
+                  onClicked: root.cancelConfirm()
+                }
+
+                Button {
+                  text: "Yes, unblock"
+                  bordered: true
+                  hasCursor: askKeys.activeFocus && askKeys.yesSelected
+                  foreground: card.text
+                  fontFamily: root.fontFamily
+                  onHovered: function(on) { if (on) askKeys.yesSelected = true }
+                  onClicked: root.finishConfirm()
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: askKeys.activeFocus
+                  ? "Y / N  ·  Up to edit the reason  ·  Esc keeps it blocked"
+                  : "Enter to go to the buttons  ·  Esc keeps it blocked"
+                color: card.faint
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
             }
           }
         }
@@ -1125,7 +1543,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: siteRow.pending ? (root.pendingBlock ? "Blocking…" : "Waiting for authentication…") : (siteRow.blocked ? "Blocked" : (siteRow.site && siteRow.site.relockAt > 0 ? root.relockText(siteRow.site) : "Not blocked"))
+          readonly property string reason: siteRow.site ? (root.siteStats(siteRow.site.name).open_reason || "") : ""
+          text: siteRow.pending ? (root.pendingBlock ? "Blocking…" : "Waiting for authentication…") : (siteRow.blocked ? "Blocked" : (siteRow.site && siteRow.site.relockAt > 0 ? root.relockText(siteRow.site) + (reason !== "" ? " -- " + reason : "") : "Not blocked"))
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
