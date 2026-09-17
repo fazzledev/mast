@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# Refreshes the unblock screen's passage pool. See lib/mast/passages.rb.
+#
+#   bin/fetch-passages            refresh if the pool is older than a week
+#   bin/fetch-passages --force    refresh now
+#   bin/fetch-passages --no-rank  keep keyword picks, without asking claude
+
+$LOAD_PATH.unshift(File.expand_path("../lib", File.dirname(File.realpath(__FILE__))))
+require "mast/passages"
+
+Mast::Passages::Pool.new.refresh(force: ARGV.include?("--force"), rank: !ARGV.include?("--no-rank"))

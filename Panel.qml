@@ -18,7 +18,7 @@ import qs.Ui
 // can lift with one stray click is not much of a block.
 //
 // Passages come from two pools mixed together: the hand-written ones in
-// paragraphs.txt, and excerpts that fetch-passages.rb pulls from books,
+// config/paragraphs.txt, and excerpts that bin/fetch-passages pulls from books,
 // blogs and news articles and keeps in a cache, each shown with its source
 // and a link. The script refreshes that cache once a week; this widget just
 // runs it every few hours and it returns at once until the week is up.
@@ -26,8 +26,9 @@ import qs.Ui
 // Before the yes/no, the question page shows the passage again with how the
 // typing went, and asks why you want the site. Each attempt -- the passages
 // shown, how far each got, the answer, and how it ended -- goes to a SQLite
-// record through mast-db.rb, which also serves the week's numbers shown
-// here and lets you look back at your reasons from a terminal.
+// record through bin/mast-db, which also serves the week's numbers shown
+// here and lets you look back at your reasons from a terminal. The Ruby side
+// is laid out like a Rails app, without the gems: see lib/mast.rb.
 //
 // Most of this can be tuned from a settings screen (the gear in the panel
 // header, or S): passage switching, the live wpm, how many words the why
@@ -41,7 +42,7 @@ import qs.Ui
 // site again, and each row counts down to it.
 //
 // Blocking only stops new requests, so whenever a site turns blocked -- from
-// the switch or from that timer -- close-open.sh closes its web app windows
+// the switch or from that timer -- bin/close-open closes its web app windows
 // and reloads browser windows showing it. Otherwise a video that is already
 // playing plays on.
 //
@@ -149,7 +150,7 @@ Panel {
   readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
   // [{ text, source, url }]. Blank-line separated paragraphs from
-  // paragraphs.txt, whitespace collapsed so line wrapping in the file never
+  // config/paragraphs.txt, whitespace collapsed so line wrapping in the file never
   // has to be typed, with no source...
   property var paragraphs: []
   // ...and the fetched excerpts, which have one.
@@ -227,16 +228,15 @@ Panel {
     if (cfg("allowSwitching") && passages.length > 1) showPassage(randomPassageIndex())
   }
 
-  readonly property string dbScript: String(Qt.resolvedUrl("mast-db.rb")).replace(/^file:\/\//, "")
+  readonly property string dbScript: String(Qt.resolvedUrl("bin/mast-db")).replace(/^file:\/\//, "")
   // [{ json, db }]; the database is fixed when the event is queued.
   property var dbQueue: []
 
-  // Test mode (see the `fazzledev.mast.test` IPC target below) keeps
-  // its attempts in a throwaway database.
+  // Test mode (see the `fazzledev.mast.test` IPC target below) runs in the
+  // test environment, which keeps its attempts in a database of their own.
   property bool testMode: false
-  readonly property string testDb: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/fazzledev-mast-test.sqlite3"
   function dbArgs() {
-    return testMode ? ["ruby", dbScript, "--db", testDb] : ["ruby", dbScript]
+    return testMode ? ["ruby", dbScript, "-e", "test"] : ["ruby", dbScript]
   }
 
   // Events are stamped here and written one process at a time, so they land
@@ -393,7 +393,7 @@ Panel {
     { section: "Relock" },
     { key: "relockMinutes", type: "int", min: 1, max: 60, step: 1, unit: " min", label: "Unblock lasts", description: "Then the site blocks itself again. The helper caps it at 60." },
     { section: "Passages" },
-    { key: "sourceParagraphs", type: "bool", kind: "paragraphs", label: "Your paragraphs", description: "paragraphs.txt" },
+    { key: "sourceParagraphs", type: "bool", kind: "paragraphs", label: "Your paragraphs", description: "config/paragraphs.txt" },
     { key: "sourceBooks", type: "bool", kind: "books", label: "Books", description: "Seneca, William James, Bennett, Thoreau, Marcus Aurelius, Epictetus" },
     { key: "sourceBlogs", type: "bool", kind: "blogs", label: "Blogs", description: "Cal Newport, James Clear" },
     { key: "sourceNews", type: "bool", kind: "news", label: "News", description: "Researchers writing in The Conversation" },
@@ -472,7 +472,7 @@ Panel {
 
   function fetchPassages(force) {
     if (fetchProc.running) return
-    fetchProc.command = ["ruby", String(Qt.resolvedUrl("fetch-passages.rb")).replace(/^file:\/\//, "")]
+    fetchProc.command = ["ruby", String(Qt.resolvedUrl("bin/fetch-passages")).replace(/^file:\/\//, "")]
       .concat(cfg("rankWithClaude") ? [] : ["--no-rank"])
       .concat(force ? ["--force"] : [])
     fetchProc.running = true
@@ -530,7 +530,7 @@ Panel {
   function beginAttempt(site) {
     var index = randomPassageIndex()
     if (index < 0) {
-      lastError = "No passages to type -- paragraphs.txt is missing or empty, and nothing has been fetched."
+      lastError = "No passages to type -- config/paragraphs.txt is missing or empty, and nothing has been fetched."
       return false
     }
     attemptId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -628,7 +628,7 @@ Panel {
       }
     })
     if (closing.length > 0) {
-      Quickshell.execDetached(["bash", String(Qt.resolvedUrl("close-open.sh")).replace(/^file:\/\//, "")].concat(closing))
+      Quickshell.execDetached(["bash", String(Qt.resolvedUrl("bin/close-open")).replace(/^file:\/\//, "")].concat(closing))
     }
     sites = next
     if (cursorIndex >= shownSites.length) cursorIndex = Math.max(0, shownSites.length - 1)
@@ -733,7 +733,7 @@ Panel {
   }
 
   FileView {
-    path: String(Qt.resolvedUrl("paragraphs.txt")).replace(/^file:\/\//, "")
+    path: String(Qt.resolvedUrl("config/paragraphs.txt")).replace(/^file:\/\//, "")
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
@@ -1174,7 +1174,7 @@ Panel {
           textFormat: Text.PlainText
           text: root.settingsTab === "settings"
             ? "Tab switches tabs  ·  Up/Down moves  ·  Enter toggles  ·  Left/Right adjusts  ·  Esc closes"
-            : "Tab switches tabs  ·  Up/Down scrolls  ·  Esc closes  ·  From a terminal: mast-db.rb reasons | attempts | passages"
+            : "Tab switches tabs  ·  Up/Down scrolls  ·  Esc closes  ·  From a terminal: bin/mast-db reasons | attempts | passages"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1908,7 +1908,7 @@ Panel {
               text: root.reasonMissing
                 ? "Answer this first -- at least " + root.cfg("reasonWords") + (root.cfg("reasonWords") === 1 ? " word" : " words") + " -- to unblock."
                 : (root.cfg("reasonWords") > 0 ? "" : "Optional. ")
-                  + "Saved with this attempt whatever you decide, so you can look back at your reasons later: mast-db reasons"
+                  + "Saved with this attempt whatever you decide, so you can look back at your reasons later: bin/mast-db reasons"
               color: root.reasonMissing ? root.urgent : card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+# The record of unblock attempts. See lib/mast/cli.rb for the commands.
+
+# realpath, so lib/ is still found when this runs through a symlink.
+$LOAD_PATH.unshift(File.expand_path("../lib", File.dirname(File.realpath(__FILE__))))
+require "mast"
+require "mast/cli"
+
+exit Mast::CLI.start(ARGV)

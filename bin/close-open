@@ -1,6 +1,6 @@
 #!/bin/bash
 # Stop blocked sites that were already open when the block went on.
-#   close-open.sh SITE...
+#   bin/close-open SITE...
 #
 # The hosts file and Chrome policy only catch new requests: a page already
 # loaded keeps its connections, so a playing video plays on. So, in the user's
