@@ -21,11 +21,16 @@
 
 set -euo pipefail
 
-HOSTS=/etc/hosts
-POLICY_DIRS=(/etc/chromium/policies/managed /etc/opt/chrome/policies/managed)
+# Everything this touches hangs off MAST_PREFIX, which is empty in an install
+# and a temporary directory under test (see test/system). pkexec clears the
+# environment, so the widget's unblock cannot smuggle one in; and with a
+# prefix set, the file permissions are still what decide what can be written.
+PREFIX=${MAST_PREFIX:-}
+HOSTS=$PREFIX/etc/hosts
+POLICY_DIRS=("$PREFIX/etc/chromium/policies/managed" "$PREFIX/etc/opt/chrome/policies/managed")
 POLICY_NAME=mast.json
-STATE_DIR=/var/lib/mast
-BIN=/usr/local/bin/mast
+STATE_DIR=$PREFIX/var/lib/mast
+BIN=${MAST_BIN:-/usr/local/bin/mast}
 
 # How long an unblock lasts before the site blocks itself again, unless the
 # caller asks for another length. Capped, so a setting in the user's own
@@ -126,6 +131,9 @@ write_policy() {
 
 block() {
   strip_hosts "$1"
+  # A hosts file that does not end in a newline would otherwise have the
+  # marker run onto its last entry, breaking that line and the block.
+  [[ -s $HOSTS && -n $(tail -c 1 "$HOSTS") ]] && echo >>"$HOSTS"
   {
     begin_marker "$1"
     for d in $(site_hosts "$1"); do printf '0.0.0.0 %s\n:: %s\n' "$d" "$d"; done
@@ -170,7 +178,7 @@ targets() {
 }
 
 change() {
-  [[ $EUID -eq 0 ]] || die "$1 needs root"
+  [[ $EUID -eq 0 || -n $PREFIX ]] || die "$1 needs root"
   # Assigned on its own line so a rejected name fails the script, not just
   # the command substitution.
   local site list minutes=${3:-$RELOCK_MINUTES}
@@ -200,7 +208,7 @@ case "${1:-status}" in
   on) change on "${2:-}" ;;
   off) change off "${2:-}" "${3:-}" ;;
   forget)
-    [[ $EUID -eq 0 ]] || die "forget needs root"
+    [[ $EUID -eq 0 || -n $PREFIX ]] || die "forget needs root"
     [[ ${2:-} != all ]] || die "forget takes one site"
     site=$(targets "${2:-}")
     # Forgetting a blocked site would do nothing useful, and a caller mistaking
@@ -211,7 +219,7 @@ case "${1:-status}" in
   restore)
     # Transient timers do not survive a reboot. Block whatever ran out while
     # the machine was off; re-arm the rest for the time they have left.
-    [[ $EUID -eq 0 ]] || die "restore needs root"
+    [[ $EUID -eq 0 || -n $PREFIX ]] || die "restore needs root"
     now=$(date +%s)
     for site in "${SITES[@]}"; do
       at=$(relock_at "$site")

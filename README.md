@@ -46,7 +46,12 @@ rake passages:build           # write config/passage_picks.yml to config/passage
 ```
 
 The Ruby side is laid out like a Rails app without the gems; see
-`lib/mast.rb`. `rake test:shell` drives the widget in the running shell
+`lib/mast.rb`. `rake test` also covers the root helper: `test/system` runs
+`system/mast` itself against a temporary directory instead of `/etc` and
+`/var` (`MAST_PREFIX`), with systemd faked, so blocking, unblocking, the
+relock cap and `restore` are checked without root.
+
+`rake test:shell` drives the widget in the running shell
 through its `fazzledev.mast.test` IPC target: the overlay, typing, hiding,
 switching, the question page and the settings screen, checked against the
 test database. It never touches the keyboard or the real record, but the
