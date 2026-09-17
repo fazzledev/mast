@@ -10,6 +10,14 @@ class TextTest < Minitest::Test
     assert_nil Text.plain("Greek αβ")
   end
 
+  def test_plain_drops_editorial_marks_but_keeps_insertions
+    assert_equal "Do wrong to thyself, my soul", Text.plain("Do wrong[A] to thyself, my soul")
+    assert_equal "leisure or ability to read", Text.plain("leisure [or ability] to read")
+    assert_equal "by vigor he means", Text.plain("by vigor [Greek: aretae] he means")
+    assert_equal "is not the same; and so", Text.plain("is not the same;+[A] and so")
+    assert_equal "By forming thyself", Text.plain("By forming + thyself")
+  end
+
   def test_html_text_strips_tags_and_entities
     assert_equal "It's & done", Text.html_text("It&#8217;s <em>&amp;</em> done")
   end

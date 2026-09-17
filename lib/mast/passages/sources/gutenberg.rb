@@ -64,7 +64,9 @@ module Mast
             lines = block.split("\n").reject { |l| l.strip.empty? }
             # Verse and block quotes are indented; they read badly run together.
             next if lines.empty? || lines.count { |l| l.start_with?("  ") } > lines.length / 2.0
-            p = Text.plain(lines.join(" ").sub(/\A\s*[IVXLC]+\.\s+/, ""))
+            # Section numbers (roman or arabic) and run-in capitals headings
+            # ("ON ATTENTION.--") are not part of what anyone should type.
+            p = Text.plain(lines.join(" ").sub(/\A\s*([IVXLC]+|\d+)\.\s+/, "").sub(/\A[A-Z][A-Z ,;'-]+\.\s*(--|\u2014)\s*/, ""))
             # Headings and chapter numbers.
             next if p.nil? || p.split.length < 8 || p.upcase == p
             p

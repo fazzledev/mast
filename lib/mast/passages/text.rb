@@ -43,7 +43,10 @@ module Mast
       def plain(text)
         text = text.each_char.map { |c| ASCII.fetch(c, c) }.join
         text = text.gsub(/\{\d+\}/, "")                                               # Gutenberg page numbers
-        text = text.gsub(/\[\d+\]/, "")                                               # footnote markers
+        text = text.gsub(/\+?\[(\d+|[A-Z])\]/, "")                                    # footnote markers, [1] or [A]
+        text = text.gsub(/\[Greek:[^\]]*\]\s?/, "")                                   # transliterated Greek
+        text = text.gsub(/\[([^\]]+)\]/, '\1')                                        # editors' insertions, kept
+        text = text.gsub(/(?<=\s)\+(?=\s)|\+(?=[\s,.;:]|\z)/, "")                     # doubtful-reading marks
         text = text.gsub(/(?<=[a-z][.,;:!?"')]|[a-z][.!?]["')])\d+(?=\s|\z)/, "")    # ...and superscript ones
         text = text.gsub(/(?<!\w)_(.+?)_(?!\w)/, '\1')                                # _italics_
         text = text.gsub(/\s+/, " ").strip

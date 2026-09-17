@@ -15,23 +15,23 @@ seneca-peace:
 - seneca-peace-89b6dddc62
 - seneca-peace-e8fe093cb8
 marcus-aurelius:
-- marcus-aurelius-a48990f16a
+- marcus-aurelius-3bcdad7801
 - marcus-aurelius-f4c62a42ef
-- marcus-aurelius-2ee2374868
-- marcus-aurelius-97259a6571
-- marcus-aurelius-2f7c7a1bdf
-- marcus-aurelius-1fc16cc5e3
-- marcus-aurelius-eb980be562
-- marcus-aurelius-7428d2bc75
-- marcus-aurelius-a0f1aa13b3
-- marcus-aurelius-a180dc47e6
-- marcus-aurelius-d9ecba58f7
-- marcus-aurelius-e534a0655b
+- marcus-aurelius-0d811b0f98
+- marcus-aurelius-a5972e8ffa
+- marcus-aurelius-b29448551d
+- marcus-aurelius-8d133e5ca3
+- marcus-aurelius-91a59085da
+- marcus-aurelius-ecdfcf4198
+- marcus-aurelius-f1f80dac24
+- marcus-aurelius-624c51a20d
+- marcus-aurelius-0632bab123
+- marcus-aurelius-5e2dc975f8
 epictetus:
-- epictetus-b80ee04a39
+- epictetus-f1d219eb17
 - epictetus-21c55793f2
-- epictetus-3e01da1b6e
-- epictetus-0284431ecb
+- epictetus-c3735e669a
+- epictetus-6dcf351db5
 - epictetus-a97b8addce
 - epictetus-2c58bbe181
 - epictetus-bcb1b25ae7
@@ -134,13 +134,13 @@ schopenhauer-wisdom:
 - schopenhauer-wisdom-68410b54bd
 - schopenhauer-wisdom-31e311411a
 - schopenhauer-wisdom-38e6851aa7
-- schopenhauer-wisdom-641ba53110
+- schopenhauer-wisdom-ebacd5e5b0
 - schopenhauer-wisdom-b628610f11
 - schopenhauer-wisdom-bd1fc541c0
 pascal-pensees:
 - pascal-pensees-c38f47b79e
 - pascal-pensees-1a2228d6a6
-- pascal-pensees-fb877cf793
+- pascal-pensees-cf1ea9c9e3
 - pascal-pensees-0f521d03c9
 allen-as-a-man-thinketh:
 - allen-as-a-man-thinketh-cea3b6c852
@@ -168,7 +168,6 @@ smiles-character:
 - smiles-character-341e71fee2
 - smiles-character-b115b9b175
 - smiles-character-acd3aabe12
-- smiles-character-bf12c46351
 - smiles-character-c6abe04145
 - smiles-character-23cf644947
 - smiles-character-fd655ba2ba
@@ -307,13 +306,15 @@ marden-victorious:
 - marden-victorious-1d45503c9e
 - marden-victorious-385d8df6b3
 - marden-victorious-3ce87c3185
+smiles-thrift:
+- smiles-thrift-e0bfcf7bcd
 emerson-society-solitude:
 - emerson-society-solitude-ff7d7ff629
 - emerson-society-solitude-10fb37fc79
 - emerson-society-solitude-edfb5d5e68
 emerson-conduct-of-life:
 - emerson-conduct-of-life-7f396374a2
-- emerson-conduct-of-life-78f5695586
+- emerson-conduct-of-life-0a731c6b65
 - emerson-conduct-of-life-908ebe1493
 carlyle-past-present:
 - carlyle-past-present-7359a370d7
