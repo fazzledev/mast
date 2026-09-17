@@ -6,7 +6,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-// Mast: bar toggles for the site block in ~/.dotfiles/system/site-block. Named
+// Mast: bar toggles for the site block that system/ installs. Named
 // for Ulysses, who had himself tied to the mast before the Sirens could sing.
 //
 // Reading the state needs no privileges; flipping it goes through pkexec.
@@ -342,8 +342,8 @@ Panel {
   // `omarchy bar set`: its IPC hop splits arguments on commas, which breaks any
   // JSON array longer than one element. updateEntryInline replaces the whole
   // bar entry, so every other setting -- including changes still on their way
-  // -- is carried over. The shell writes shell.json through its symlink, so
-  // the change lands in dotfiles.
+  // -- is carried over, and shell.json is written wherever it lives,
+  // symlinked into dotfiles or not.
   function saveSettings(patch) {
     if (!bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") {
       lastError = "Could not save settings: this bar does not allow widget settings writes."

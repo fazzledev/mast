@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unblocks every site and removes the helper. Run as root:
-#   sudo bash ~/.dotfiles/system/site-block/uninstall.sh
+#   sudo bash system/uninstall.sh
 
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run me with sudo" >&2; exit 1; }

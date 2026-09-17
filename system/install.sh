@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs the site block and the helper the bar toggles it with:
-#   sudo bash ~/.dotfiles/system/site-block/install.sh [SITE...]
+#   sudo bash system/install.sh [SITE...]
 # Idempotent, and leaves existing blocks as they are; name sites to block
 # them as well (e.g. `youtube twitter`). See uninstall.sh to undo.
 
@@ -38,7 +38,7 @@ install -o root -g root -m 0755 "$SRC_DIR/site-block" "$BIN"
 # falls through to polkit's default and asks for auth.
 say "Installing $RULE for $TARGET_USER"
 cat >"$RULE" <<RULEFILE
-// Installed by ~/.dotfiles/system/site-block/install.sh
+// Installed by Mast's system/install.sh
 polkit.addRule(function(action, subject) {
   if (action.id == "org.freedesktop.policykit.exec" &&
       action.lookup("program") == "$BIN" &&
