@@ -149,7 +149,9 @@ Panel {
   // not expose. Everything blocked shows in it; anything unblocked stands out
   // in urgent as a reminder that it is still off.
   property color green: "#4caf50"
-  readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
+  // A boat under sail while everything is blocked; one going down while
+  // anything is not.
+  readonly property string barGlyph: allBlocked ? "󰻈" : "󱫯"
   readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
   // [{ id, text, source, url }]. Blank-line separated paragraphs from
