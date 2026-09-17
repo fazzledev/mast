@@ -6,11 +6,12 @@ Mast is an [Omarchy](https://omarchy.org) bar widget that blocks distracting
 sites -- YouTube, X, Instagram, Reddit and more -- system-wide, and makes
 unblocking one a deliberate act:
 
-- **Type a passage first.** About 190 words, from 300 excerpts of public
-  domain books that ship with Mast -- Seneca, Marcus Aurelius, Epictetus,
-  William James, Arnold Bennett, Thoreau and more -- or from your own
-  paragraphs. The ones that win battles come up more often; hide any you
-  never want to see again.
+- **Type a passage first.** About 190 words, from the 343 that ship with
+  Mast -- excerpts of public domain books (Seneca, Marcus Aurelius,
+  Epictetus, William James, Arnold Bennett, Thoreau and more) and of
+  researchers writing in The Conversation -- or from your own paragraphs.
+  The ones that win battles come up more often; hide any you never want to
+  see again.
 - **Say why.** Your reason is saved with the attempt.
 - **It blocks itself again.** Every unblock is temporary.
 - **See your battles.** A history of attempts, reasons, and which passages
@@ -28,7 +29,7 @@ omarchy plugin add https://github.com/fazzledev/mast --enable
 sudo bash ~/.config/omarchy/plugins/fazzledev.mast/system/install.sh
 ```
 
-The second step installs the root helper that edits `/etc/hosts` and the
+The second step installs `mast`, the root helper that edits `/etc/hosts` and the
 Chrome policy, a polkit rule that lets blocking skip the password prompt, and
 a boot service that restores pending relocks. `system/uninstall.sh` undoes it.
 
@@ -48,5 +49,15 @@ The Ruby side is laid out like a Rails app without the gems; see
 the real record through the `fazzledev.mast.test` IPC target (see
 `Panel.qml`).
 
-The passages are excerpts from public domain texts on Project Gutenberg, each
-shown with its source and a link to the book.
+## Passages and credit
+
+The book passages are excerpts from public domain texts on Project Gutenberg,
+each shown with its source and a link to the book.
+
+The news passages are unaltered excerpts from articles published by
+[The Conversation](https://theconversation.com) under the
+[Creative Commons Attribution-NoDerivatives 4.0](https://creativecommons.org/licenses/by-nd/4.0/)
+licence. Each is shown with its authors, the article's title, a link to it,
+and the licence; the only changes are typographic (straight quotes, dashes and
+spacing, so they can be typed). Only articles their feeds mark with that
+licence are used.

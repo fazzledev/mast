@@ -16,7 +16,7 @@ module Mast
       # Housekeeping that has no place in a passage about focus.
       NOISE = Regexp.new(
         'subscribe|newsletter|podcast|episode|click|sign up|https?:|www\.|sponsor|affiliate|' \
-        'pre-?order|book tour|webinar|coupon|discount|this article|(our|my) course|registration',
+        'pre-?order|book tour|webinar|coupon|discount|this article|(our|my) course|registration|\Aread more\b',
         Regexp::IGNORECASE)
 
       ASCII = {
@@ -28,6 +28,9 @@ module Mast
         "é" => "e", "è" => "e", "ê" => "e", "ë" => "e", "ï" => "i", "ö" => "o",
         "ü" => "u",
       }.freeze
+
+      # The ASCII stand-ins that change how text looks, not what it says.
+      TYPOGRAPHIC = ASCII.keys.grep_v(/\p{L}/).freeze
 
       ENTITIES = {
         "amp" => "&", "lt" => "<", "gt" => ">", "quot" => '"', "apos" => "'", "nbsp" => " ",
@@ -52,6 +55,16 @@ module Mast
         text = text.gsub(/\s+/, " ").strip
         text.match?(/[^\x20-\x7e]/) ? nil : text
       end
+
+      # Typographic changes only -- quotes, dashes, ellipses, spacing -- or nil
+      # if anything else stands in the way of typing it: an accented letter, a
+      # footnote marker. For text whose licence forbids altering the wording.
+      def verbatim(text)
+        typed = text.each_char.map { |c| TYPOGRAPHIC.include?(c) ? ASCII.fetch(c) : c }.join.gsub(/\s+/, " ").strip
+        typed.match?(/[^\x20-\x7e]/) ? nil : typed
+      end
+
+      def html_verbatim(fragment) = verbatim(unescape(fragment.gsub(/<[^>]+>/, "")))
 
       # Entities decoded, and nothing else touched.
       def unescape(text)

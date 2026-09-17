@@ -56,7 +56,7 @@ Panel {
   moduleName: "fazzledev.mast"
   ipcTarget: "fazzledev.mast"
 
-  readonly property string helper: "/usr/local/bin/site-block"
+  readonly property string helper: "/usr/local/bin/mast"
 
   // [{ name, label, blocked }]. Empty until the first status read; the widget
   // stays hidden until then, and for good if the helper is not installed.
@@ -103,6 +103,9 @@ Panel {
   property string confirmPhrase: ""
   property string confirmSource: ""
   property string confirmUrl: ""
+  // A licence the passage is shared under, for the ones that need crediting.
+  property string confirmLicense: ""
+  property string confirmLicenseUrl: ""
   // Typing done; the overlay is on its yes/no question.
   property bool confirmAsking: false
   // The attempt being recorded, the number of the passage view within it,
@@ -156,10 +159,10 @@ Panel {
   // ...and the book excerpts that ship in config/passages.json.
   property var bookPassages: []
   readonly property var allPassages: paragraphs.concat(bookPassages)
-  function passageKind(p) { return p.url ? "books" : "paragraphs" }
+  function passageKind(p) { return !p.url ? "paragraphs" : p.url.indexOf("theconversation.com") !== -1 ? "news" : "books" }
   // The sources that are switched on, less the hidden passages.
   readonly property var passages: {
-    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks") }
+    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks"), news: cfg("sourceNews") }
     var scores = stats.passages || {}
     var list = allPassages.filter(function(p) { return on[passageKind(p)] && !(scores[p.id] && scores[p.id].hidden) })
     // Turning every source off, or hiding everything, must not take the
@@ -237,6 +240,8 @@ Panel {
     confirmPhrase = passage.text
     confirmSource = passage.source
     confirmUrl = passage.url
+    confirmLicense = passage.license || ""
+    confirmLicenseUrl = passage.licenseUrl || ""
     phraseField.text = ""
     phraseField.lastText = ""
     phraseField.lastGood = 0
@@ -397,7 +402,7 @@ Panel {
   // and reach shell.json a moment later.
   readonly property var settingDefaults: ({
     allowSwitching: true, showWpm: true, reasonWords: 3, coolOffSeconds: 0, relockMinutes: 15,
-    sourceParagraphs: true, sourceBooks: true,
+    sourceParagraphs: true, sourceBooks: true, sourceNews: true,
     greenWhenBlocked: true, showWeekStats: true
   })
   property var settingOverrides: ({})
@@ -429,6 +434,7 @@ Panel {
     { section: "Passages" },
     { key: "sourceParagraphs", type: "bool", kind: "paragraphs", label: "Your paragraphs", description: "config/paragraphs.txt" },
     { key: "sourceBooks", type: "bool", kind: "books", label: "Books", description: "Seneca, Marcus Aurelius, Epictetus, William James, Bennett, Thoreau and more, all public domain" },
+    { key: "sourceNews", type: "bool", kind: "news", label: "News", description: "Researchers writing in The Conversation, shared under CC BY-ND 4.0" },
     { section: "Display" },
     { key: "greenWhenBlocked", type: "bool", label: "Green when all blocked", description: "Bar icon and switches" },
     { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" }
@@ -785,7 +791,8 @@ Panel {
       root.bookPassages = (Array.isArray(list) ? list : []).filter(function(p) {
         return p && p.id && typeof p.text === "string" && p.text.trim() !== ""
       }).map(function(p) {
-        return { id: String(p.id), text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || "") }
+        return { id: String(p.id), text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || ""),
+                 license: String(p.license || ""), licenseUrl: String(p.license_url || "") }
       })
     }
     onLoadFailed: root.bookPassages = []
@@ -1656,6 +1663,30 @@ Panel {
                 }
               }
             }
+
+            // The credit a licensed excerpt owes: an unaltered excerpt, and
+            // the licence it is shared under.
+            Text {
+              visible: root.confirmLicense !== ""
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Excerpt shared under " + root.confirmLicense
+              color: licenseLink.containsMouse ? card.text : card.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.underline: licenseLink.containsMouse
+
+              MouseArea {
+                id: licenseLink
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  Qt.openUrlExternally(root.confirmLicenseUrl)
+                  phraseField.forceActiveFocus()
+                }
+              }
+            }
           }
 
           Row {
@@ -1889,7 +1920,7 @@ Panel {
               visible: root.confirmSource !== ""
               width: parent.width
               textFormat: Text.PlainText
-              text: "-- " + root.confirmSource
+              text: "-- " + root.confirmSource + (root.confirmLicense !== "" ? " (" + root.confirmLicense + ")" : "")
               color: card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

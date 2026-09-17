@@ -29,7 +29,8 @@
       "sourceParagraphs": true,
       "sourceBooks": true,
       "greenWhenBlocked": true,
-      "showWeekStats": true
+      "showWeekStats": true,
+      "sourceNews": true
     },
     "schema": [
       {
@@ -139,6 +140,13 @@
         "type": "boolean",
         "label": "Books",
         "description": "Excerpts from public domain books that ship with Mast: Seneca, Marcus Aurelius, Epictetus, William James, Bennett, Thoreau and more.",
+        "defaultValue": true
+      },
+      {
+        "key": "sourceNews",
+        "type": "boolean",
+        "label": "News",
+        "description": "Excerpts from researchers writing in The Conversation, shared under CC BY-ND 4.0.",
         "defaultValue": true
       },
       {

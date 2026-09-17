@@ -1,5 +1,5 @@
 #!/bin/bash
-# Block or unblock distracting sites: /etc/hosts for every program, plus a
+# Mast's root helper. Block or unblock distracting sites: /etc/hosts for every program, plus a
 # Chrome/Chromium URLBlocklist policy for browsers doing their own DNS.
 #
 #   status        one line per site: name, label, blocked (0/1), and when
@@ -23,9 +23,9 @@ set -euo pipefail
 
 HOSTS=/etc/hosts
 POLICY_DIRS=(/etc/chromium/policies/managed /etc/opt/chrome/policies/managed)
-POLICY_NAME=site-block.json
-STATE_DIR=/var/lib/site-block
-BIN=/usr/local/bin/site-block
+POLICY_NAME=mast.json
+STATE_DIR=/var/lib/mast
+BIN=/usr/local/bin/mast
 
 # How long an unblock lasts before the site blocks itself again, unless the
 # caller asks for another length. Capped, so a setting in the user's own
@@ -93,10 +93,10 @@ site_policy() {
   esac
 }
 
-die() { echo "site-block: $*" >&2; exit 1; }
+die() { echo "mast: $*" >&2; exit 1; }
 
-begin_marker() { echo "# >>> site-block:$1 >>>"; }
-end_marker() { echo "# <<< site-block:$1 <<<"; }
+begin_marker() { echo "# >>> mast:$1 >>>"; }
+end_marker() { echo "# <<< mast:$1 <<<"; }
 
 is_blocked() { grep -qxF "$(begin_marker "$1")" "$HOSTS"; }
 
@@ -133,7 +133,7 @@ block() {
   } >>"$HOSTS"
 }
 
-relock_unit() { echo "site-block-relock-$1"; }
+relock_unit() { echo "mast-relock-$1"; }
 until_file() { echo "$STATE_DIR/$1.until"; }
 
 relock_at() {
@@ -223,5 +223,5 @@ case "${1:-status}" in
       fi
     done
     ;;
-  *) die "usage: site-block {status|on SITE|off SITE [MINUTES]|forget SITE|restore}  (SITE: ${SITES[*]} or all)" ;;
+  *) die "usage: mast {status|on SITE|off SITE [MINUTES]|forget SITE|restore}  (SITE: ${SITES[*]} or all)" ;;
 esac

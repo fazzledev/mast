@@ -1,0 +1,27 @@
+# Article sources for Mast's passages. See lib/mast/passages/sources/conversation.rb.
+
+# The Conversation's topic feeds. Only articles the feed marks CC BY-ND are used.
+conversation:
+  topics:
+    - procrastination-7917
+    - willpower-23689
+    - self-control-8266
+    - habits-3412
+    - focus-93491
+    - attention-7826
+    - attention-span-23989
+    - attention-economy-79825
+    - distraction-44071
+    - time-management-42146
+    - productivity-841
+    - boredom-34884
+    - mindfulness-463
+    - flow-state-113810
+    - smartphones-1957
+    - mobile-phones-496
+    - screen-time-12193
+    - social-media-109
+    - social-media-addiction-53153
+    - doomscrolling-118127
+    - digital-detox-16181
+    - loneliness-2663
