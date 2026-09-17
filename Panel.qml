@@ -28,11 +28,13 @@ import qs.Ui
 // record through site-block-db.rb, which also serves the week's numbers shown
 // here and lets you look back at your reasons from a terminal.
 //
-// Most of this can be tuned from a settings popover (the gear in the panel
+// Most of this can be tuned from a settings screen (the gear in the panel
 // header, or S): passage switching, the live wpm, how many words the why
 // needs, a wait before yes, how long an unblock lasts, which passage sources
 // are used and whether Claude ranks them, and the display extras. They are
 // ordinary widget settings, declared in manifest.json and saved to shell.json.
+// The same screen has a History tab: the week's numbers, recent attempts with
+// their reasons, and how each passage has fared.
 //
 // Every unblock is temporary: the helper arms a systemd timer that blocks the
 // site again, and each row counts down to it.
@@ -402,27 +404,51 @@ Panel {
   ]
   readonly property var settingsItems: settingsRows.filter(function(r) { return !r.section })
 
+  // The two columns of the settings tab: up to Passages, and from there.
+  readonly property int settingsSplit: {
+    for (var i = 0; i < settingsRows.length; i++) if (settingsRows[i].section === "Passages") return i
+    return settingsRows.length
+  }
+
   property bool settingsOpen: false
+  property string settingsTab: "settings"  // or "history"
   property int settingsCursor: 0
   property bool settingsCursorActive: false
 
-  // Stands in for a Panel as the settings popover's owner, so the bar's
-  // one-popover-at-a-time coordination closes it like any other.
-  QtObject {
-    id: settingsOwner
-    property bool popoutSwitchClosing: false
-    function close() { root.settingsOpen = false }
-  }
+  // `site-block-db history`: { stats, attempts: [...], passages: [...] }.
+  property var historyData: ({ stats: {}, attempts: [], passages: [] })
 
-  function openSettings() {
+  function openSettings(tab) {
+    close()
+    settingsTab = tab || "settings"
     settingsCursorActive = false
     settingsCursor = 0
     settingsOpen = true
+    refreshHistory()
   }
 
-  function backFromSettings() {
-    settingsOpen = false
-    open()
+  function refreshHistory() {
+    if (historyProc.running) return
+    historyProc.command = dbArgs().concat(["history"])
+    historyProc.running = true
+  }
+
+  function switchSettingsTab() {
+    settingsTab = settingsTab === "settings" ? "history" : "settings"
+    if (settingsTab === "history") refreshHistory()
+  }
+
+  readonly property var outcomeLabels: ({
+    walked_away: "Walked away", kept_blocked: "Kept blocked", auth_dismissed: "Closed the password prompt",
+    failed: "Unblock failed", unblocked: "Unblocked", interrupted: "Interrupted", in_progress: "In progress"
+  })
+  function outcomeWon(outcome) { return ["walked_away", "kept_blocked", "auth_dismissed", "failed", "interrupted"].indexOf(outcome) !== -1 }
+  function outcomeColor(outcome) { return outcome === "unblocked" ? urgent : outcomeWon(outcome) ? green : dim }
+
+  function averageWpm() {
+    var typed = historyData.attempts.filter(function(a) { return a.wpm > 0 })
+    if (typed.length === 0) return 0
+    return Math.round(typed.reduce(function(sum, a) { return sum + a.wpm }, 0) / typed.length)
   }
 
   function settingDescription(item) {
@@ -802,7 +828,10 @@ Panel {
     onExited: function(exitCode) {
       if (exitCode !== 0) console.warn("site-block-db: " + String(dbStderr.text || "").trim())
       if (root.dbQueue.length > 0) root.drainDb()
-      else root.refreshStats()
+      else {
+        root.refreshStats()
+        if (root.settingsOpen) root.refreshHistory()
+      }
     }
   }
 
@@ -812,6 +841,16 @@ Panel {
       waitForEnd: true
       onStreamFinished: {
         try { root.stats = JSON.parse(text) } catch (e) {}
+      }
+    }
+  }
+
+  Process {
+    id: historyProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.historyData = JSON.parse(text) } catch (e) {}
       }
     }
   }
@@ -863,7 +902,7 @@ Panel {
       onDeleteRequested: if (root.cursorActive && root.cursorIndex < root.shownSites.length) root.removeSite(root.shownSites[root.cursorIndex])
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(key) { if (key === "s" || key === "S") root.openSettings() }
+      onTextKey: function(key) { if (key === "s" || key === "S") root.openSettings("settings") }
 
       Column {
         id: column
@@ -878,12 +917,24 @@ Panel {
           // reach this panel through the hero's id.
           readonly property var panelRoot: root
           trailingControl: Component {
-            PanelActionButton {
-              iconText: "\u{F0493}"
-              tooltipText: "Settings (S)"
-              foreground: siteBlockHero.foreground
-              fontFamily: siteBlockHero.fontFamily
-              onClicked: siteBlockHero.panelRoot.openSettings()
+            Row {
+              spacing: Style.space(2)
+
+              PanelActionButton {
+                iconText: "\u{F02DA}"
+                tooltipText: "History"
+                foreground: siteBlockHero.foreground
+                fontFamily: siteBlockHero.fontFamily
+                onClicked: siteBlockHero.panelRoot.openSettings("history")
+              }
+
+              PanelActionButton {
+                iconText: "\u{F0493}"
+                tooltipText: "Settings (S)"
+                foreground: siteBlockHero.foreground
+                fontFamily: siteBlockHero.fontFamily
+                onClicked: siteBlockHero.panelRoot.openSettings("settings")
+              }
             }
           }
           meta: root.blockedCount + " of " + root.shownSites.length + " sites blocked"
@@ -959,130 +1010,441 @@ Panel {
     }
   }
 
-  // ------------------------------------------------------ settings popover
-  // `omarchy-shell fazzledev.site-block.settings open`, for a keybinding.
+  // ------------------------------------------------------ settings and history
+  // `omarchy-shell fazzledev.site-block.settings open` (or `history`), for a
+  // keybinding.
   IpcHandler {
     target: "fazzledev.site-block.settings"
-    function open(): void { root.openSettings() }
+    function open(): void { root.openSettings("settings") }
+    function history(): void { root.openSettings("history") }
     function close(): void { root.settingsOpen = false }
-    function toggle(): void { if (root.settingsOpen) root.settingsOpen = false; else root.openSettings() }
+    function toggle(): void { if (root.settingsOpen) root.settingsOpen = false; else root.openSettings("settings") }
   }
 
-  KeyboardPanel {
-    id: settingsPanel
-    anchorItem: button
-    owner: settingsOwner
-    bar: root.bar
-    open: root.settingsOpen
-    focusTarget: settingsKeys
-    contentWidth: settingsPanel.fittedContentWidth(Style.space(380))
-    contentHeight: settingsPanel.fittedContentHeight(settingsColumn.implicitHeight, Style.space(820))
+  PanelWindow {
+    id: settingsWindow
+    visible: root.settingsOpen
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "fazzledev-site-block-settings"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    exclusionMode: ExclusionMode.Ignore
 
-    PanelKeyCatcher {
-      id: settingsKeys
+    onVisibleChanged: if (visible) Qt.callLater(function() { settingsKeys.forceActiveFocus() })
+
+    Rectangle {
       anchors.fill: parent
-      onMoveRequested: function(dx, dy) {
-        if (!root.settingsCursorActive) { root.settingsCursorActive = true; return }
-        if (dy !== 0) {
-          root.settingsCursor = Math.max(0, Math.min(root.settingsItems.length - 1, root.settingsCursor + dy))
-          settingsFlick.revealCursor()
-        } else {
-          root.adjustSetting(root.settingsItems[root.settingsCursor], dx)
-        }
-      }
-      onActivateRequested: if (root.settingsCursorActive) root.activateSetting(root.settingsItems[root.settingsCursor])
-      onCloseRequested: root.settingsOpen = false
-      onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(key) { if (key === "b" || key === "B") root.backFromSettings() }
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Backspace) { root.backFromSettings(); event.accepted = true }
-      }
+      color: Color.menu.scrim
+    }
 
-      Flickable {
-        id: settingsFlick
+    // Nothing is at stake here, unlike the unblock screen: a click beside the
+    // card closes it.
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.settingsOpen = false
+    }
+
+    BorderSurface {
+      id: settingsCard
+      anchors.centerIn: parent
+      width: Math.min(Style.space(1080), settingsWindow.width - Style.gapsOut * 4)
+      height: Math.min(Style.space(860), settingsWindow.height - Style.gapsOut * 4)
+      radius: Style.cornerRadius
+      color: Color.menu.background
+      borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+      padding: Style.spacing.panelPadding * 1.5
+
+      // Keeps clicks on the card from reaching the scrim.
+      MouseArea { anchors.fill: parent }
+
+      Item {
+        id: settingsKeys
         anchors.fill: parent
-        contentHeight: settingsColumn.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
+        anchors.topMargin: settingsCard.contentTopInset
+        anchors.rightMargin: settingsCard.contentRightInset
+        anchors.bottomMargin: settingsCard.contentBottomInset
+        anchors.leftMargin: settingsCard.contentLeftInset
+        focus: true
 
-        function revealCursor() {
-          var row = settingsRepeater.itemAt(root.settingsRows.indexOf(root.settingsItems[root.settingsCursor]))
-          if (!row) return
-          var y = row.mapToItem(settingsColumn, 0, 0).y
-          if (y < contentY) contentY = y
-          else if (y + row.height > contentY + height) contentY = y + row.height - height
+        Keys.onPressed: function(event) {
+          var onSettings = root.settingsTab === "settings"
+          var key = event.key
+          if (key === Qt.Key_Escape) root.settingsOpen = false
+          else if (key === Qt.Key_Tab || key === Qt.Key_Backtab) root.switchSettingsTab()
+          else if (event.text === "1") { root.settingsTab = "settings" }
+          else if (event.text === "2") { root.settingsTab = "history"; root.refreshHistory() }
+          else if (key === Qt.Key_Down || key === Qt.Key_Up || event.text === "j" || event.text === "k") {
+            var dy = key === Qt.Key_Down || event.text === "j" ? 1 : -1
+            if (!onSettings) {
+              attemptsFlick.contentY = Math.max(0, Math.min(attemptsFlick.contentHeight - attemptsFlick.height, attemptsFlick.contentY + dy * Style.space(80)))
+            } else if (!root.settingsCursorActive) {
+              root.settingsCursorActive = true
+            } else {
+              root.settingsCursor = Math.max(0, Math.min(root.settingsItems.length - 1, root.settingsCursor + dy))
+              leftSettings.reveal()
+              rightSettings.reveal()
+            }
+          } else if (key === Qt.Key_Left || key === Qt.Key_Right || event.text === "h" || event.text === "l") {
+            if (onSettings && root.settingsCursorActive) {
+              root.adjustSetting(root.settingsItems[root.settingsCursor], key === Qt.Key_Right || event.text === "l" ? 1 : -1)
+            }
+          } else if (key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_Space) {
+            if (onSettings && root.settingsCursorActive) root.activateSetting(root.settingsItems[root.settingsCursor])
+          } else {
+            return
+          }
+          event.accepted = true
         }
 
-        Column {
-          id: settingsColumn
-          width: settingsFlick.width
-          spacing: Style.space(6)
+        // Title, tabs, close.
+        Item {
+          id: settingsHeader
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: Math.max(settingsTitle.implicitHeight, settingsTabs.implicitHeight)
 
           Row {
-            width: parent.width
-            spacing: Style.space(8)
+            id: settingsTitle
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(12)
 
-            PanelActionButton {
+            Text {
               anchors.verticalCenter: parent.verticalCenter
-              iconText: "\u{F0141}"
-              tooltipText: "Back (B)"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.backFromSettings()
+              text: root.barGlyph
+              color: root.barIconColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.display
             }
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "Site Block Settings"
-              color: root.foreground
+              text: "Site Block"
+              color: Color.menu.text
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
               font.bold: true
             }
           }
 
-          Repeater {
-            id: settingsRepeater
-            model: root.settingsRows
+          Row {
+            id: settingsTabs
+            anchors.centerIn: parent
+            spacing: Style.space(8)
 
-            Loader {
-              id: settingLoader
-              required property var modelData
-              width: settingsColumn.width
-              sourceComponent: modelData.section ? sectionHeading : settingRow
+            Button {
+              text: "Settings"
+              bordered: true
+              selected: root.settingsTab === "settings"
+              foreground: Color.menu.text
+              fontFamily: root.fontFamily
+              onClicked: root.settingsTab = "settings"
+            }
 
-              Component {
-                id: sectionHeading
-                PanelSectionHeader {
-                  width: settingsColumn.width
-                  topPadding: Style.space(10)
-                  text: settingLoader.modelData.section.toUpperCase()
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                }
-              }
+            Button {
+              text: "History"
+              bordered: true
+              selected: root.settingsTab === "history"
+              foreground: Color.menu.text
+              fontFamily: root.fontFamily
+              onClicked: { root.settingsTab = "history"; root.refreshHistory() }
+            }
+          }
 
-              Component {
-                id: settingRow
-                SettingRow {
-                  width: settingsColumn.width
-                  item: settingLoader.modelData
-                  cursorIndex: root.settingsItems.indexOf(settingLoader.modelData)
+          PanelActionButton {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "\u{F0156}"
+            tooltipText: "Close (Esc)"
+            foreground: Color.menu.text
+            fontFamily: root.fontFamily
+            onClicked: root.settingsOpen = false
+          }
+        }
+
+        Text {
+          id: settingsFooter
+          anchors.bottom: parent.bottom
+          anchors.left: parent.left
+          anchors.right: parent.right
+          textFormat: Text.PlainText
+          text: root.settingsTab === "settings"
+            ? "Tab switches tabs  ·  Up/Down moves  ·  Enter toggles  ·  Left/Right adjusts  ·  Esc closes"
+            : "Tab switches tabs  ·  Up/Down scrolls  ·  Esc closes  ·  From a terminal: site-block-db.rb reasons | attempts | passages"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        // ---- settings tab
+        Row {
+          visible: root.settingsTab === "settings"
+          anchors.top: settingsHeader.bottom
+          anchors.topMargin: Style.space(20)
+          anchors.bottom: settingsFooter.top
+          anchors.bottomMargin: Style.space(12)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          spacing: Style.space(32)
+
+          SettingsColumn {
+            id: leftSettings
+            width: (parent.width - parent.spacing) / 2
+            height: parent.height
+            rows: root.settingsRows.slice(0, root.settingsSplit)
+          }
+
+          SettingsColumn {
+            id: rightSettings
+            width: (parent.width - parent.spacing) / 2
+            height: parent.height
+            rows: root.settingsRows.slice(root.settingsSplit)
+          }
+        }
+
+        // ---- history tab
+        Column {
+          id: historyTab
+          visible: root.settingsTab === "history"
+          anchors.top: settingsHeader.bottom
+          anchors.topMargin: Style.space(20)
+          anchors.bottom: settingsFooter.top
+          anchors.bottomMargin: Style.space(12)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          spacing: Style.space(20)
+
+          readonly property var week: (root.historyData.stats && root.historyData.stats.week) || {}
+
+          Row {
+            id: historyTiles
+            width: parent.width
+            spacing: Style.space(16)
+
+            Repeater {
+              model: [
+                { value: (historyTab.week.stayed || 0) + " of " + (historyTab.week.attempts || 0), label: "unblock battles won this week" },
+                { value: String(historyTab.week.unblocked || 0), label: (historyTab.week.unblocked === 1 ? "unblock" : "unblocks") + " this week, " + Math.round((historyTab.week.unblocked_seconds || 0) / 60) + " min open" },
+                { value: root.averageWpm() > 0 ? root.averageWpm() + " wpm" : "--", label: "average typing speed, recent attempts" }
+              ]
+
+              BorderSurface {
+                required property var modelData
+                width: (historyTiles.width - historyTiles.spacing * 2) / 3
+                height: tileColumn.implicitHeight + Style.space(28)
+                radius: Style.cornerRadius
+                color: "transparent"
+                borderSpec: Border.controlSpec("normal", Color.menu.text, Color.accent)
+
+                Column {
+                  id: tileColumn
+                  anchors.centerIn: parent
+                  width: parent.width - Style.space(28)
+                  spacing: Style.space(4)
+
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    text: modelData.value
+                    color: Color.menu.text
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.title
+                    font.bold: true
+                  }
+
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    text: modelData.label
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                  }
                 }
               }
             }
           }
 
-          Text {
+          Row {
             width: parent.width
-            topPadding: Style.space(8)
-            textFormat: Text.PlainText
-            text: "Up/Down to move  ·  Enter toggles  ·  Left/Right adjusts  ·  B back"
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
+            height: parent.height - historyTiles.height - parent.spacing
+            spacing: Style.space(32)
+
+            // Recent attempts, newest first.
+            Column {
+              width: (parent.width - parent.spacing) * 0.55
+              height: parent.height
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                id: attemptsHeading
+                text: "RECENT ATTEMPTS"
+                foreground: Color.menu.text
+                fontFamily: root.fontFamily
+              }
+
+              Flickable {
+                id: attemptsFlick
+                width: parent.width
+                height: parent.height - attemptsHeading.height - parent.spacing
+                contentHeight: attemptsColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                  id: attemptsColumn
+                  width: attemptsFlick.width
+                  spacing: Style.space(14)
+
+                  Text {
+                    visible: root.historyData.attempts.length === 0
+                    textFormat: Text.PlainText
+                    text: "No attempts yet."
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  Repeater {
+                    model: root.historyData.attempts
+
+                    Column {
+                      required property var modelData
+                      width: attemptsColumn.width
+                      spacing: Style.space(3)
+
+                      Text {
+                        width: parent.width
+                        textFormat: Text.StyledText
+                        text: root.escapeHtml(Qt.formatDateTime(new Date(modelData.started_at * 1000), "ddd d MMM HH:mm")
+                                + "  ·  " + modelData.label + "  ·  ")
+                          + "<font color='" + root.outcomeColor(modelData.outcome) + "'>"
+                          + root.escapeHtml(root.outcomeLabels[modelData.outcome] || modelData.outcome) + "</font>"
+                        color: Color.menu.text
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                        font.bold: true
+                        elide: Text.ElideRight
+                      }
+
+                      Text {
+                        visible: !!modelData.reason
+                        width: parent.width
+                        textFormat: Text.PlainText
+                        text: "Why: " + (modelData.reason || "")
+                        color: Color.menu.text
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.bodySmall
+                        wrapMode: Text.WordWrap
+                      }
+
+                      Text {
+                        readonly property var facts: [
+                          modelData.wpm ? modelData.wpm + " wpm" : "",
+                          modelData.typing_seconds ? root.formatDuration(modelData.typing_seconds) + " typing" : "",
+                          modelData.shown > 1 ? modelData.shown + " passages" : "",
+                          modelData.open_seconds !== null && modelData.open_seconds !== undefined ? Math.round(modelData.open_seconds / 60) + " min open" : ""
+                        ].filter(function(f) { return f !== "" })
+                        visible: facts.length > 0 || !!modelData.passage_opening
+                        width: parent.width
+                        textFormat: Text.PlainText
+                        text: facts.concat(modelData.passage_opening
+                          ? [(modelData.passage_source ? modelData.passage_source + ": " : "") + "\"" + modelData.passage_opening + "\""]
+                          : []).join("  ·  ")
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        wrapMode: Text.WordWrap
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // Passages, the ones that won most often first.
+            Column {
+              width: (parent.width - parent.spacing) * 0.45
+              height: parent.height
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                id: passagesHeading
+                text: "PASSAGES"
+                foreground: Color.menu.text
+                fontFamily: root.fontFamily
+              }
+
+              Flickable {
+                width: parent.width
+                height: parent.height - passagesHeading.height - parent.spacing
+                contentHeight: passagesColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                  id: passagesColumn
+                  width: parent.width
+                  spacing: Style.space(14)
+
+                  Text {
+                    visible: root.historyData.passages.length === 0
+                    textFormat: Text.PlainText
+                    text: "No passages shown yet."
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  Repeater {
+                    model: root.historyData.passages
+
+                    Column {
+                      required property var modelData
+                      width: passagesColumn.width
+                      spacing: Style.space(3)
+
+                      Text {
+                        width: parent.width
+                        textFormat: Text.PlainText
+                        text: modelData.source || "Your paragraph"
+                        color: Color.menu.text
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.bodySmall
+                        font.bold: true
+                        elide: Text.ElideRight
+                      }
+
+                      Text {
+                        width: parent.width
+                        textFormat: Text.PlainText
+                        text: "\"" + modelData.opening + "\""
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        elide: Text.ElideRight
+                      }
+
+                      Text {
+                        width: parent.width
+                        textFormat: Text.StyledText
+                        text: "<font color='" + root.green + "'>won " + (modelData.walked_away + modelData.kept_blocked) + "</font>"
+                          + "  ·  <font color='" + root.urgent + "'>lost " + modelData.unblocked + "</font>"
+                          + "  ·  shown " + modelData.shown + "  ·  skipped " + modelData.skipped
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1646,7 +2008,68 @@ Panel {
     }
   }
 
-  // One row of the settings popover: label and description, and a switch,
+  // One column of the settings tab: section headings and setting rows, which
+  // scroll if the screen is short.
+  component SettingsColumn: Flickable {
+    id: settingsColumnFlick
+    property var rows: []
+
+    contentHeight: settingsColumnBody.implicitHeight
+    clip: true
+    boundsBehavior: Flickable.StopAtBounds
+
+    // Scrolls the cursor's row into view, if it is in this column.
+    function reveal() {
+      var index = rows.indexOf(root.settingsItems[root.settingsCursor])
+      if (index < 0) return
+      var row = settingsColumnRepeater.itemAt(index)
+      if (!row) return
+      var y = row.mapToItem(settingsColumnBody, 0, 0).y
+      if (y < contentY) contentY = y
+      else if (y + row.height > contentY + height) contentY = y + row.height - height
+    }
+
+    Column {
+      id: settingsColumnBody
+      width: settingsColumnFlick.width
+      spacing: Style.space(6)
+
+      Repeater {
+        id: settingsColumnRepeater
+        model: settingsColumnFlick.rows
+
+        Loader {
+          id: settingLoader
+          required property var modelData
+          width: settingsColumnBody.width
+          sourceComponent: modelData.section ? sectionHeading : settingRow
+
+          Component {
+            id: sectionHeading
+            PanelSectionHeader {
+              width: settingsColumnBody.width
+              topPadding: Style.space(6)
+              bottomPadding: Style.space(2)
+              text: settingLoader.modelData.section.toUpperCase()
+              foreground: Color.menu.text
+              fontFamily: root.fontFamily
+            }
+          }
+
+          Component {
+            id: settingRow
+            SettingRow {
+              width: settingsColumnBody.width
+              item: settingLoader.modelData
+              cursorIndex: root.settingsItems.indexOf(settingLoader.modelData)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // One row of the settings screen: label and description, and a switch,
   // a stepper, or a run glyph on the right.
   component SettingRow: CursorSurface {
     id: settingRowItem

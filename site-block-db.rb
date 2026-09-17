@@ -14,6 +14,7 @@
 #   site-block-db attempts [N]     the last N attempts (default 20)
 #   site-block-db passages         which passages sent you away, and which did not
 #   site-block-db stats            the widget's summary, as JSON
+#   site-block-db history          attempts and passages for the widget's history tab, as JSON
 #   site-block-db record JSON      store one event from the widget
 #
 # Outcomes: walked_away (Esc while typing), kept_blocked (said no at the end),
@@ -242,10 +243,16 @@ def reasons(site)
   end
 end
 
+def attempt_rows(limit)
+  db.execute("SELECT a.*, p.source, p.text, (SELECT COUNT(*) FROM views v WHERE v.attempt_id = a.id) AS shown " \
+             "FROM attempts a LEFT JOIN passages p ON p.id = COALESCE(a.passage_id, " \
+             "(SELECT v.passage_id FROM views v WHERE v.attempt_id = a.id ORDER BY v.seq DESC LIMIT 1)) " \
+             "ORDER BY a.started_at DESC LIMIT ?",
+             [limit])
+end
+
 def attempts(limit)
-  rows = db.execute("SELECT a.*, p.source, p.text, (SELECT COUNT(*) FROM views v WHERE v.attempt_id = a.id) AS shown " \
-                    "FROM attempts a LEFT JOIN passages p ON p.id = a.passage_id ORDER BY a.started_at DESC LIMIT ?",
-                    [limit])
+  rows = attempt_rows(limit)
   return puts("No attempts recorded yet.") if rows.empty?
   rows.each do |r|
     line = "#{fmt_time(r["started_at"])}  #{r["label"].ljust(12)} #{outcome_of(r).tr("_", " ").ljust(14)}"
@@ -253,7 +260,7 @@ def attempts(limit)
     line += ", #{r["shown"]} passages" if r["shown"].to_i > 1
     line += ", open #{fmt_duration(open_seconds(r))}" if r["outcome"] == "unblocked"
     puts line.rstrip
-    puts "  typed: #{passage_name(r)}" if r["passage_id"]
+    puts "  #{r["passage_id"] ? "typed:" : "shown:"} #{passage_name(r)}" if r["text"]
     puts "  why:   #{r["reason"]}" if r["reason"]
   end
 end
@@ -265,8 +272,8 @@ end
 
 # For each passage: times shown, skipped for another, on screen when you
 # walked away, and typed out in full before keeping the block or unblocking.
-def passages
-  rows = db.execute(<<~SQL)
+def passage_rows
+  db.execute(<<~SQL)
     SELECT p.id, p.text, p.source,
       COUNT(*) AS shown,
       SUM(v.seq < (SELECT MAX(seq) FROM views w WHERE w.attempt_id = v.attempt_id)) AS skipped,
@@ -278,6 +285,10 @@ def passages
     GROUP BY p.id
     ORDER BY (walked_away + kept_blocked) * 1.0 / COUNT(*) DESC, shown DESC
   SQL
+end
+
+def passages
+  rows = passage_rows
   return puts("No passages shown yet.") if rows.empty?
   puts "shown  skipped  walked away  kept blocked  unblocked  passage"
   rows.each do |r|
@@ -286,10 +297,38 @@ def passages
   end
 end
 
+def opening(text)
+  words = text.to_s.split
+  words.first(12).join(" ") + (words.length > 12 ? "..." : "")
+end
+
+# Everything the widget's history tab shows, in one read.
+def history
+  now = Time.now.to_f
+  {
+    stats: stats,
+    attempts: attempt_rows(100).map do |r|
+      {
+        started_at: r["started_at"], site: r["site"], label: r["label"], outcome: outcome_of(r, now),
+        reason: r["reason"], wpm: r["wpm"], typing_seconds: r["typing_seconds"]&.round, typos: r["typos"],
+        shown: r["shown"], open_seconds: r["outcome"] == "unblocked" ? open_seconds(r, now).round : nil,
+        passage_source: r["source"], passage_opening: r["text"] && opening(r["text"]),
+      }
+    end,
+    passages: passage_rows.map do |r|
+      {
+        source: r["source"], opening: opening(r["text"]), shown: r["shown"], skipped: r["skipped"],
+        walked_away: r["walked_away"], kept_blocked: r["kept_blocked"], unblocked: r["unblocked"],
+      }
+    end,
+  }
+end
+
 command, *args = ARGV
 case command
 when "record" then record(JSON.parse(args.fetch(0)))
 when "stats" then puts JSON.generate(stats)
+when "history" then puts JSON.generate(history)
 when "reasons" then reasons(args[0])
 when "attempts" then attempts((args[0] || 20).to_i)
 when "passages" then passages
