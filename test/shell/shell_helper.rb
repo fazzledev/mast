@@ -88,7 +88,18 @@ class ShellTest::TestCase < Minitest::Test
     sourceParagraphs: true, sourceBooks: true, sourceNews: true, showWeekStats: true,
   }
 
+  # Anything the shell complains about while a test runs -- a binding that
+  # cannot see what it reads, a type that will not load, a mast-db that
+  # failed -- fails that test. QML keeps going after an error, so without
+  # this a broken panel still passes.
+  def assert_no_shell_errors(since)
+    lines = `journalctl --user --since "#{since.strftime("%Y-%m-%d %H:%M:%S")}" --output cat`.lines
+    complaints = lines.grep(/fazzledev\.mast|mast-db:/).grep(/Error|error:|is not a type|Unable to assign|Required property/)
+    assert_empty complaints.map(&:strip).uniq.first(5), "the shell complained"
+  end
+
   def setup
+    @started_at = Time.now
     ipc("stop")
     wait("writes to finish") { state["dbPending"].zero? && !state["readsPending"] }
     FileUtils.rm_f(Dir["#{DB}*"])
@@ -98,6 +109,7 @@ class ShellTest::TestCase < Minitest::Test
   def teardown
     ipc("stop")
     wait("writes to finish") { state["dbPending"].zero? }
+    assert_no_shell_errors(@started_at)
   end
 
   def settings(**overrides)
