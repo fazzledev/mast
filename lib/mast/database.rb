@@ -19,15 +19,22 @@ module Mast
       rows(run("PRAGMA foreign_keys = ON;\n#{interpolate(sql, binds)};"))
     end
 
-    # Runs several statements as one transaction.
+    # Runs several statements as one transaction. IMMEDIATE takes the write
+    # lock up front, where the busy timeout waits for it, rather than failing
+    # on the upgrade from reading when another process writes first.
     def transaction(statements)
-      run("PRAGMA foreign_keys = ON;\nBEGIN;\n#{statements.map { |s| "#{s};" }.join("\n")}\nCOMMIT;")
+      run("PRAGMA foreign_keys = ON;\nBEGIN IMMEDIATE;\n#{statements.map { |s| "#{s};" }.join("\n")}\nCOMMIT;")
       nil
     end
 
+    # Every mast-db process migrates first, and the widget starts them side by
+    # side, so they take turns: the second finds the first's work done.
     def migrate!
       FileUtils.mkdir_p(File.dirname(path))
-      Migrator.new(self).migrate
+      File.open("#{path}.migrate-lock", File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        Migrator.new(self).migrate
+      end
     end
 
     def quote(value)

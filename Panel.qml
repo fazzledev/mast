@@ -288,15 +288,28 @@ Panel {
     drainDb()
   }
 
+  // Set from start to exit: a Process's `running` lags the assignment.
+  property bool dbWriting: false
+  property bool statsReading: false
+  property bool historyReading: false
+  // A refresh asked for while one is under way, run when it ends.
+  property bool statsAgain: false
+  property bool historyAgain: false
+
   function drainDb() {
-    if (dbProc.running || dbQueue.length === 0) return
+    if (dbWriting || dbQueue.length === 0) return
     var next = dbQueue.shift()
+    dbWriting = true
     dbProc.command = next.args.concat(["record", next.json])
     dbProc.running = true
   }
 
   function refreshStats() {
-    if (statsProc.running) return
+    if (statsReading) {
+      statsAgain = true
+      return
+    }
+    statsReading = true
     statsProc.command = dbArgs().concat(["stats"])
     statsProc.running = true
   }
@@ -408,8 +421,11 @@ Panel {
     greenWhenBlocked: true, showWeekStats: true
   })
   property var settingOverrides: ({})
+  // Test mode's settings, never saved; `stop` drops them.
+  property var testOverrides: ({})
 
   function cfg(key) {
+    if (testOverrides[key] !== undefined) return testOverrides[key]
     if (settingOverrides[key] !== undefined) return settingOverrides[key]
     return setting(key, settingDefaults[key])
   }
@@ -467,7 +483,11 @@ Panel {
   }
 
   function refreshHistory() {
-    if (historyProc.running) return
+    if (historyReading) {
+      historyAgain = true
+      return
+    }
+    historyReading = true
     historyProc.command = dbArgs().concat(["history"])
     historyProc.running = true
   }
@@ -611,8 +631,13 @@ Panel {
     Qt.callLater(function() { reasonField.forceActiveFocus() })
   }
 
-  // A reason of a few words is the price of yes.
+  // A reason of a few words is the price of yes, and so is the wait -- from
+  // the button, Y or Enter alike.
   function finishConfirm() {
+    if (Date.now() < yesAt) {
+      askClock = Date.now()
+      return
+    }
     if (!reasonGiven()) {
       reasonMissing = true
       reasonField.forceActiveFocus()
@@ -674,15 +699,20 @@ Panel {
   //
   //   omarchy-shell fazzledev.mast.test start youtube   open an attempt
   //   omarchy-shell fazzledev.mast.test type 12          type the passage, 12 ms a character
+  //   omarchy-shell fazzledev.mast.test step 1           next passage (-1 previous)
+  //   omarchy-shell fazzledev.mast.test shuffle          a random one
   //   omarchy-shell fazzledev.mast.test hide              never show this passage again
   //   omarchy-shell fazzledev.mast.test reason "..."     answer why
   //   omarchy-shell fazzledev.mast.test answer no        or yes, or esc
   //   omarchy-shell fazzledev.mast.test state            what the overlay shows, as JSON
+  //   omarchy-shell fazzledev.mast.test setting coolOffSeconds 0   for this test run only
+  //   omarchy-shell fazzledev.mast.test settings history  the settings screen, on test data
   //   omarchy-shell fazzledev.mast.test stop             close it and leave test mode
   //
   // Typing is fed into the field from here, never through the keyboard. The
-  // overlay takes no keyboard focus, says TEST MODE, writes to a throwaway
-  // database in $XDG_RUNTIME_DIR, and "yes" unblocks nothing.
+  // overlay and settings screen take no keyboard focus, the overlay says TEST
+  // MODE, everything is recorded in the test database, and "yes" unblocks
+  // nothing. test/shell drives this end to end.
   IpcHandler {
     target: "fazzledev.mast.test"
 
@@ -707,6 +737,36 @@ Panel {
       return "ok"
     }
 
+    function step(delta: int): string {
+      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
+      testTyper.stop()
+      root.stepPassage(delta)
+      return root.confirmId
+    }
+
+    function shuffle(): string {
+      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
+      testTyper.stop()
+      root.shufflePassage()
+      return root.confirmId
+    }
+
+    // "true", "false" or a number.
+    function setting(key: string, value: string): string {
+      if (!(key in root.settingDefaults)) return "no setting " + key
+      var next = Object.assign({}, root.testOverrides)
+      next[key] = value === "true" ? true : value === "false" ? false : Number(value)
+      root.testOverrides = next
+      return "ok"
+    }
+
+    function settings(tab: string): string {
+      if (root.confirmingSite !== null && !root.testMode) return "a real attempt is open"
+      root.testMode = true
+      root.openSettings(tab)
+      return "ok"
+    }
+
     function hide(): string {
       if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
       var hidden = root.confirmId
@@ -726,9 +786,23 @@ Panel {
       return JSON.stringify({
         testMode: root.testMode,
         open: root.confirmingSite !== null,
+        overlayVisible: overlay.visible,
+        site: root.confirmingSite ? root.confirmingSite.name : null,
+        attempt: root.attemptId,
         asking: root.confirmAsking,
         progress: phraseField.lastGood + "/" + root.confirmPhrase.length,
         passage: root.confirmId,
+        source: root.confirmSource,
+        url: root.confirmUrl,
+        license: root.confirmLicense,
+        coolOffLeft: root.coolOffLeft,
+        dbPending: root.dbQueue.length + (root.dbWriting ? 1 : 0),
+        readsPending: root.statsReading || root.historyReading || root.statsAgain || root.historyAgain,
+        settingsOpen: root.settingsOpen,
+        settingsVisible: settingsWindow.visible,
+        settingsTab: root.settingsTab,
+        historyAttempts: root.historyData.attempts.length,
+        historyPassages: root.historyData.passages.length,
         passages: root.passages.length + " of " + root.allPassages.length,
         wpm: phraseField.wpm,
         typos: phraseField.typos,
@@ -741,6 +815,8 @@ Panel {
     function stop(): string {
       testTyper.stop()
       if (root.testMode && root.confirmingSite !== null) root.cancelConfirm()
+      if (root.testMode) root.settingsOpen = false
+      root.testOverrides = {}
       root.testMode = false
       root.refreshStats()
       return "ok"
@@ -850,6 +926,7 @@ Panel {
     id: dbProc
     stderr: StdioCollector { id: dbStderr; waitForEnd: true }
     onExited: function(exitCode) {
+      root.dbWriting = false
       if (exitCode !== 0) console.warn("mast-db: " + String(dbStderr.text || "").trim())
       if (root.dbQueue.length > 0) root.drainDb()
       else {
@@ -867,6 +944,13 @@ Panel {
         try { root.stats = JSON.parse(text) } catch (e) {}
       }
     }
+    onExited: function() {
+      root.statsReading = false
+      if (root.statsAgain) {
+        root.statsAgain = false
+        Qt.callLater(root.refreshStats)
+      }
+    }
   }
 
   Process {
@@ -875,6 +959,13 @@ Panel {
       waitForEnd: true
       onStreamFinished: {
         try { root.historyData = JSON.parse(text) } catch (e) {}
+      }
+    }
+    onExited: function() {
+      root.historyReading = false
+      if (root.historyAgain) {
+        root.historyAgain = false
+        Qt.callLater(root.refreshHistory)
       }
     }
   }
@@ -1052,7 +1143,7 @@ Panel {
     color: "transparent"
     WlrLayershell.namespace: "fazzledev-mast-settings"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    WlrLayershell.keyboardFocus: root.testMode ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
     onVisibleChanged: if (visible) Qt.callLater(function() { settingsKeys.forceActiveFocus() })

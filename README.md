@@ -37,6 +37,7 @@ a boot service that restores pending relocks. `system/uninstall.sh` undoes it.
 
 ```sh
 rake test                     # minitest, on a Ruby that has it
+rake test:shell               # the widget end to end, in the running shell
 bin/mast-db attempts          # the record, from a terminal
 bin/mast-db reasons
 bin/mast-db passages
@@ -45,9 +46,11 @@ rake passages:build           # write config/passage_picks.yml to config/passage
 ```
 
 The Ruby side is laid out like a Rails app without the gems; see
-`lib/mast.rb`. Test the overlay end to end without touching the keyboard or
-the real record through the `fazzledev.mast.test` IPC target (see
-`Panel.qml`).
+`lib/mast.rb`. `rake test:shell` drives the widget in the running shell
+through its `fazzledev.mast.test` IPC target: the overlay, typing, hiding,
+switching, the question page and the settings screen, checked against the
+test database. It never touches the keyboard or the real record, but the
+overlay does cover the screen while it runs. See `test/shell/shell_helper.rb`.
 
 ## Passages and credit
 

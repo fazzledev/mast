@@ -27,6 +27,23 @@ class MigrationsTest < Mast::TestCase
     assert_equal Mast::Migrator.new(Mast.db).pending.map(&:first), versions
   end
 
+  # The widget's first write and first read can both find no database, each
+  # in a process of its own.
+  def test_processes_migrating_a_new_database_at_once
+    FileUtils.rm_f(Dir["#{Mast.database_path}*"])
+    errors = Queue.new
+    8.times.map do
+      Thread.new do
+        Mast::Database.new(Mast.database_path).migrate!
+      rescue => e
+        errors << e
+      end
+    end.each(&:join)
+    assert_empty errors.size.times.map { errors.pop.message }
+    versions = Mast.db.execute("SELECT version FROM schema_migrations ORDER BY version").map { |r| r["version"] }
+    assert_equal Mast::Migrator.new(Mast.db).pending.map(&:first), versions
+  end
+
   def test_migrating_twice_changes_nothing
     Mast.db
     Mast.reset_db!

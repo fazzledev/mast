@@ -5,8 +5,18 @@ require "rake/testtask"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "lib" << "test"
-  t.test_files = FileList["test/**/*_test.rb"]
+  t.test_files = FileList["test/**/*_test.rb"].exclude("test/shell/**")
   t.warning = false
+end
+
+namespace :test do
+  # Drives the widget in the running shell; see test/shell/shell_helper.rb.
+  Rake::TestTask.new(:shell) do |t|
+    t.description = "Run the widget end to end in the running shell, in test mode"
+    t.libs << "lib" << "test"
+    t.test_files = FileList["test/shell/**/*_test.rb"]
+    t.warning = false
+  end
 end
 
 task default: :test
