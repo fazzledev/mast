@@ -23,7 +23,7 @@
 # the pool from last time stays as it is; keyword picks are used only when
 # there is no earlier pool at all.
 #
-# Writes $XDG_CACHE_HOME/fazzledev-site-block/passages.json, a list of
+# Writes $XDG_CACHE_HOME/fazzledev-mast/passages.json, a list of
 # { text, source, url, family, score }, where family is the book, blog or site
 # the passage came from. The widget runs this every few hours; it does nothing
 # until the pool is a week old. A source that fails to download keeps its
@@ -40,10 +40,10 @@ require "open3"
 require "rexml/document"
 require "uri"
 
-CACHE = File.join(ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache"), "fazzledev-site-block")
+CACHE = File.join(ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache"), "fazzledev-mast")
 OUT = File.join(CACHE, "passages.json")
 MAX_AGE = 7 * 24 * 3600
-USER_AGENT = "fazzledev-site-block/1.0 (personal focus widget)"
+USER_AGENT = "fazzledev-mast/1.0 (personal focus widget)"
 
 MIN_WORDS = 150
 MAX_WORDS = 240

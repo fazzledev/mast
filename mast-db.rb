@@ -10,18 +10,18 @@
 #
 # The widget writes through `record` and reads `stats`; the rest is for you:
 #
-#   site-block-db reasons [SITE]   why you wanted each site, newest first
-#   site-block-db attempts [N]     the last N attempts (default 20)
-#   site-block-db passages         which passages sent you away, and which did not
-#   site-block-db stats            the widget's summary, as JSON
-#   site-block-db history          attempts and passages for the widget's history tab, as JSON
-#   site-block-db record JSON      store one event from the widget
+#   mast-db reasons [SITE]   why you wanted each site, newest first
+#   mast-db attempts [N]     the last N attempts (default 20)
+#   mast-db passages         which passages sent you away, and which did not
+#   mast-db stats            the widget's summary, as JSON
+#   mast-db history          attempts and passages for the widget's history tab, as JSON
+#   mast-db record JSON      store one event from the widget
 #
 # Outcomes: walked_away (Esc while typing), kept_blocked (said no at the end),
 # unblocked, auth_dismissed (closed the password prompt), failed, and
 # interrupted for an attempt the shell never finished reporting.
 #
-# Data lives in $XDG_DATA_HOME/fazzledev-site-block/site-block.sqlite3; a
+# Data lives in $XDG_DATA_HOME/fazzledev-mast/mast.sqlite3; a
 # leading `--db PATH` points everything at another file, which is how the
 # widget's test mode keeps its attempts out of the real record.
 #
@@ -37,7 +37,7 @@ DB_PATH = if ARGV[0] == "--db"
   ARGV.shift
   File.expand_path(ARGV.shift.to_s)
 else
-  File.join(ENV["XDG_DATA_HOME"] || File.expand_path("~/.local/share"), "fazzledev-site-block", "site-block.sqlite3")
+  File.join(ENV["XDG_DATA_HOME"] || File.expand_path("~/.local/share"), "fazzledev-mast", "mast.sqlite3")
 end
 WEEK = 7 * 24 * 3600
 # Ones with no ending reported this long after starting were cut off.

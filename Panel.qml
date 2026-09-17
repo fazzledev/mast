@@ -6,7 +6,8 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-// Bar toggles for the site block in ~/.dotfiles/system/site-block.
+// Mast: bar toggles for the site block in ~/.dotfiles/system/site-block. Named
+// for Ulysses, who had himself tied to the mast before the Sirens could sing.
 //
 // Reading the state needs no privileges; flipping it goes through pkexec.
 // Blocking is let straight through by a polkit rule the installer adds.
@@ -25,7 +26,7 @@ import qs.Ui
 // Before the yes/no, the question page shows the passage again with how the
 // typing went, and asks why you want the site. Each attempt -- the passages
 // shown, how far each got, the answer, and how it ended -- goes to a SQLite
-// record through site-block-db.rb, which also serves the week's numbers shown
+// record through mast-db.rb, which also serves the week's numbers shown
 // here and lets you look back at your reasons from a terminal.
 //
 // Most of this can be tuned from a settings screen (the gear in the panel
@@ -52,8 +53,8 @@ import qs.Ui
 // would then forget about, nor lifts one.
 Panel {
   id: root
-  moduleName: "fazzledev.site-block"
-  ipcTarget: "fazzledev.site-block"
+  moduleName: "fazzledev.mast"
+  ipcTarget: "fazzledev.mast"
 
   readonly property string helper: "/usr/local/bin/site-block"
 
@@ -114,7 +115,7 @@ Panel {
   property string authReason: ""
   // Set when yes is chosen before the why is answered.
   property bool reasonMissing: false
-  // `site-block-db stats`: the last seven days, overall and per site, as
+  // `mast-db stats`: the last seven days, overall and per site, as
   // { attempts, stayed, unblocked, unblocked_seconds, open_reason }.
   property var stats: ({ week: {}, sites: {} })
 
@@ -167,7 +168,7 @@ Panel {
     // Turning every source off must not take the challenge away with it.
     return list.length > 0 ? list : allPassages
   }
-  readonly property string passageCache: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/fazzledev-site-block/passages.json"
+  readonly property string passageCache: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/fazzledev-mast/passages.json"
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
@@ -226,14 +227,14 @@ Panel {
     if (cfg("allowSwitching") && passages.length > 1) showPassage(randomPassageIndex())
   }
 
-  readonly property string dbScript: String(Qt.resolvedUrl("site-block-db.rb")).replace(/^file:\/\//, "")
+  readonly property string dbScript: String(Qt.resolvedUrl("mast-db.rb")).replace(/^file:\/\//, "")
   // [{ json, db }]; the database is fixed when the event is queued.
   property var dbQueue: []
 
-  // Test mode (see the `fazzledev.site-block.test` IPC target below) keeps
+  // Test mode (see the `fazzledev.mast.test` IPC target below) keeps
   // its attempts in a throwaway database.
   property bool testMode: false
-  readonly property string testDb: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/fazzledev-site-block-test.sqlite3"
+  readonly property string testDb: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/fazzledev-mast-test.sqlite3"
   function dbArgs() {
     return testMode ? ["ruby", dbScript, "--db", testDb] : ["ruby", dbScript]
   }
@@ -415,7 +416,7 @@ Panel {
   property int settingsCursor: 0
   property bool settingsCursorActive: false
 
-  // `site-block-db history`: { stats, attempts: [...], passages: [...] }.
+  // `mast-db history`: { stats, attempts: [...], passages: [...] }.
   property var historyData: ({ stats: {}, attempts: [], passages: [] })
 
   function openSettings(tab) {
@@ -643,18 +644,18 @@ Panel {
 
   // Test mode, for checking the overlay end to end without a real unblock:
   //
-  //   omarchy-shell fazzledev.site-block.test start youtube   open an attempt
-  //   omarchy-shell fazzledev.site-block.test type 12          type the passage, 12 ms a character
-  //   omarchy-shell fazzledev.site-block.test reason "..."     answer why
-  //   omarchy-shell fazzledev.site-block.test answer no        or yes, or esc
-  //   omarchy-shell fazzledev.site-block.test state            what the overlay shows, as JSON
-  //   omarchy-shell fazzledev.site-block.test stop             close it and leave test mode
+  //   omarchy-shell fazzledev.mast.test start youtube   open an attempt
+  //   omarchy-shell fazzledev.mast.test type 12          type the passage, 12 ms a character
+  //   omarchy-shell fazzledev.mast.test reason "..."     answer why
+  //   omarchy-shell fazzledev.mast.test answer no        or yes, or esc
+  //   omarchy-shell fazzledev.mast.test state            what the overlay shows, as JSON
+  //   omarchy-shell fazzledev.mast.test stop             close it and leave test mode
   //
   // Typing is fed into the field from here, never through the keyboard. The
   // overlay takes no keyboard focus, says TEST MODE, writes to a throwaway
   // database in $XDG_RUNTIME_DIR, and "yes" unblocks nothing.
   IpcHandler {
-    target: "fazzledev.site-block.test"
+    target: "fazzledev.mast.test"
 
     function start(site: string): string {
       if (root.confirmingSite !== null && !root.testMode) return "a real attempt is open"
@@ -826,7 +827,7 @@ Panel {
     id: dbProc
     stderr: StdioCollector { id: dbStderr; waitForEnd: true }
     onExited: function(exitCode) {
-      if (exitCode !== 0) console.warn("site-block-db: " + String(dbStderr.text || "").trim())
+      if (exitCode !== 0) console.warn("mast-db: " + String(dbStderr.text || "").trim())
       if (root.dbQueue.length > 0) root.drainDb()
       else {
         root.refreshStats()
@@ -912,7 +913,7 @@ Panel {
         PanelHero {
           id: siteBlockHero
           width: parent.width
-          title: "Site Block"
+          title: "Mast"
           // Inside the hero's own components `root` is the hero, so they
           // reach this panel through the hero's id.
           readonly property var panelRoot: root
@@ -1011,10 +1012,10 @@ Panel {
   }
 
   // ------------------------------------------------------ settings and history
-  // `omarchy-shell fazzledev.site-block.settings open` (or `history`), for a
+  // `omarchy-shell fazzledev.mast.settings open` (or `history`), for a
   // keybinding.
   IpcHandler {
-    target: "fazzledev.site-block.settings"
+    target: "fazzledev.mast.settings"
     function open(): void { root.openSettings("settings") }
     function history(): void { root.openSettings("history") }
     function close(): void { root.settingsOpen = false }
@@ -1026,7 +1027,7 @@ Panel {
     visible: root.settingsOpen
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "fazzledev-site-block-settings"
+    WlrLayershell.namespace: "fazzledev-mast-settings"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
@@ -1122,7 +1123,7 @@ Panel {
             Text {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "Site Block"
+              text: "Mast"
               color: Color.menu.text
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
@@ -1173,7 +1174,7 @@ Panel {
           textFormat: Text.PlainText
           text: root.settingsTab === "settings"
             ? "Tab switches tabs  ·  Up/Down moves  ·  Enter toggles  ·  Left/Right adjusts  ·  Esc closes"
-            : "Tab switches tabs  ·  Up/Down scrolls  ·  Esc closes  ·  From a terminal: site-block-db.rb reasons | attempts | passages"
+            : "Tab switches tabs  ·  Up/Down scrolls  ·  Esc closes  ·  From a terminal: mast-db.rb reasons | attempts | passages"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1457,7 +1458,7 @@ Panel {
     visible: root.confirmingSite !== null
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "fazzledev-site-block"
+    WlrLayershell.namespace: "fazzledev-mast"
     WlrLayershell.layer: WlrLayer.Overlay
     // Test mode must never take the keyboard from whatever you are doing.
     WlrLayershell.keyboardFocus: root.testMode ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
@@ -1907,7 +1908,7 @@ Panel {
               text: root.reasonMissing
                 ? "Answer this first -- at least " + root.cfg("reasonWords") + (root.cfg("reasonWords") === 1 ? " word" : " words") + " -- to unblock."
                 : (root.cfg("reasonWords") > 0 ? "" : "Optional. ")
-                  + "Saved with this attempt whatever you decide, so you can look back at your reasons later: site-block-db reasons"
+                  + "Saved with this attempt whatever you decide, so you can look back at your reasons later: mast-db reasons"
               color: root.reasonMissing ? root.urgent : card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

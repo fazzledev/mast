@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "fazzledev.site-block",
-  "name": "Site Block",
+  "id": "fazzledev.mast",
+  "name": "Mast",
   "version": "3.1.0",
   "author": "fazzledev",
-  "description": "Shows which distracting sites are blocked and toggles each one, behind an auth prompt.",
+  "description": "Tie yourself to the mast: block distracting sites, and make unblocking one cost a typed passage, a reason, and a relock.",
   "kinds": [
     "bar-widget"
   ],
@@ -12,8 +12,8 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Site Block",
-    "description": "Per-site switches for the system-wide block in system/site-block. Choose which sites get a row in settings; a blocked site always shows. Hides itself when the helper is not installed.",
+    "displayName": "Mast",
+    "description": "Per-site block switches. Unblocking means typing out a convincing passage and saying why, and the site blocks itself again after a while. Tracks every attempt. Hides itself when the helper is not installed.",
     "category": "System",
     "allowMultiple": false,
     "defaults": {
