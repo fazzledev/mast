@@ -18,10 +18,9 @@ import qs.Ui
 // can lift with one stray click is not much of a block.
 //
 // Passages come from two pools mixed together: the hand-written ones in
-// config/paragraphs.txt, and excerpts that bin/fetch-passages pulls from books,
-// blogs and news articles and keeps in a cache, each shown with its source
-// and a link. The script refreshes that cache once a week; this widget just
-// runs it every few hours and it returns at once until the week is up.
+// config/paragraphs.txt, and the 300 excerpts from public domain books that
+// ship in config/passages.json, each shown with its source and a link. The
+// ones that win battles come up more often, and any can be hidden for good.
 //
 // Before the yes/no, the question page shows the passage again with how the
 // typing went, and asks why you want the site. Each attempt -- the passages
@@ -100,6 +99,7 @@ Panel {
   // Index into `passages` of the one on screen; the prev and next buttons
   // step from it.
   property int confirmIndex: -1
+  property string confirmId: ""
   property string confirmPhrase: ""
   property string confirmSource: ""
   property string confirmUrl: ""
@@ -149,27 +149,23 @@ Panel {
   readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
   readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
-  // [{ text, source, url }]. Blank-line separated paragraphs from
-  // config/paragraphs.txt, whitespace collapsed so line wrapping in the file never
-  // has to be typed, with no source...
+  // [{ id, text, source, url }]. Blank-line separated paragraphs from
+  // config/paragraphs.txt, whitespace collapsed so line wrapping in the file
+  // never has to be typed, with no source and an id from their text...
   property var paragraphs: []
-  // ...and the fetched excerpts, which have one.
-  property var fetchedPassages: []
-  readonly property var allPassages: paragraphs.concat(fetchedPassages)
-  // Which source a passage came from, going by its link.
-  function passageKind(p) {
-    if (!p.url) return "paragraphs"
-    if (p.url.indexOf("gutenberg.org") !== -1) return "books"
-    if (p.url.indexOf("theconversation.com") !== -1) return "news"
-    return "blogs"
-  }
+  // ...and the book excerpts that ship in config/passages.json.
+  property var bookPassages: []
+  readonly property var allPassages: paragraphs.concat(bookPassages)
+  function passageKind(p) { return p.url ? "books" : "paragraphs" }
+  // The sources that are switched on, less the hidden passages.
   readonly property var passages: {
-    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks"), blogs: cfg("sourceBlogs"), news: cfg("sourceNews") }
-    var list = allPassages.filter(function(p) { return on[passageKind(p)] })
-    // Turning every source off must not take the challenge away with it.
+    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks") }
+    var scores = stats.passages || {}
+    var list = allPassages.filter(function(p) { return on[passageKind(p)] && !(scores[p.id] && scores[p.id].hidden) })
+    // Turning every source off, or hiding everything, must not take the
+    // challenge away with it.
     return list.length > 0 ? list : allPassages
   }
-  readonly property string passageCache: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/fazzledev-mast/passages.json"
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
@@ -183,12 +179,49 @@ Panel {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   }
 
-  // A random index, never the passage on screen when there is a choice.
+  // How likely a passage is to come up: its battles won against lost, with
+  // one of each assumed so a new passage starts even and no passage ever
+  // drops to nothing.
+  function passageWeight(p) {
+    var score = (stats.passages || {})[p.id]
+    return score ? (score.won + 1) / (score.won + score.lost + 2) : 0.5
+  }
+
+  // A random index, weighted towards winners, never the passage on screen
+  // when there is a choice.
   function randomPassageIndex() {
     if (passages.length === 0) return -1
-    var next = Math.floor(Math.random() * passages.length)
-    if (passages.length > 1 && passages[next].text === confirmPhrase) return randomPassageIndex()
-    return next
+    var total = 0
+    var weights = passages.map(function(p) {
+      var w = passages.length > 1 && p.text === confirmPhrase ? 0 : passageWeight(p)
+      total += w
+      return w
+    })
+    var roll = Math.random() * total
+    for (var i = 0; i < weights.length; i++) {
+      roll -= weights[i]
+      if (roll < 0) return i
+    }
+    return weights.length - 1
+  }
+
+  // Never shows the passage again. Its record stays, and the History tab can
+  // bring it back.
+  function setPassageHidden(passage, hidden) {
+    if (!passage || !passage.id) return
+    record({ type: "hide", passage_id: passage.id, text: passage.text, source: passage.source, url: passage.url, hidden: hidden })
+    // Straight away, rather than when the stats next come back.
+    var next = Object.assign({}, stats)
+    next.passages = Object.assign({}, stats.passages || {})
+    next.passages[passage.id] = Object.assign({ won: 0, lost: 0 }, next.passages[passage.id] || {}, { hidden: hidden })
+    stats = next
+  }
+
+  function hideCurrentPassage() {
+    if (!cfg("allowSwitching")) return
+    var current = { id: confirmId, text: confirmPhrase, source: confirmSource, url: confirmUrl }
+    setPassageHidden(current, true)
+    showPassage(randomPassageIndex())
   }
 
   // Switching passage starts the typing over, so hunting for an easier one
@@ -200,6 +233,7 @@ Panel {
       record({ type: "leave", attempt: attemptId, seq: viewSeq, chars: phraseField.lastGood })
     }
     confirmIndex = index
+    confirmId = passage.id
     confirmPhrase = passage.text
     confirmSource = passage.source
     confirmUrl = passage.url
@@ -215,7 +249,7 @@ Panel {
     phraseField.forceActiveFocus()
     if (attemptId !== "") {
       viewSeq += 1
-      record({ type: "passage", attempt: attemptId, seq: viewSeq, text: passage.text, source: passage.source, url: passage.url })
+      record({ type: "passage", attempt: attemptId, seq: viewSeq, passage_id: passage.id, text: passage.text, source: passage.source, url: passage.url })
     }
   }
 
@@ -363,7 +397,7 @@ Panel {
   // and reach shell.json a moment later.
   readonly property var settingDefaults: ({
     allowSwitching: true, showWpm: true, reasonWords: 3, coolOffSeconds: 0, relockMinutes: 15,
-    sourceParagraphs: true, sourceBooks: true, sourceBlogs: true, sourceNews: true, rankWithClaude: true,
+    sourceParagraphs: true, sourceBooks: true,
     greenWhenBlocked: true, showWeekStats: true
   })
   property var settingOverrides: ({})
@@ -394,11 +428,7 @@ Panel {
     { key: "relockMinutes", type: "int", min: 1, max: 60, step: 1, unit: " min", label: "Unblock lasts", description: "Then the site blocks itself again. The helper caps it at 60." },
     { section: "Passages" },
     { key: "sourceParagraphs", type: "bool", kind: "paragraphs", label: "Your paragraphs", description: "config/paragraphs.txt" },
-    { key: "sourceBooks", type: "bool", kind: "books", label: "Books", description: "Seneca, William James, Bennett, Thoreau, Marcus Aurelius, Epictetus" },
-    { key: "sourceBlogs", type: "bool", kind: "blogs", label: "Blogs", description: "Cal Newport, James Clear" },
-    { key: "sourceNews", type: "bool", kind: "news", label: "News", description: "Researchers writing in The Conversation" },
-    { key: "rankWithClaude", type: "bool", label: "Rank with Claude", description: "Keep only fetched passages claude -p scores as convincing; off keeps keyword picks" },
-    { action: "refreshPassages", type: "action", label: "Refresh passages now", description: "Fetch a new pool; takes a few minutes with ranking" },
+    { key: "sourceBooks", type: "bool", kind: "books", label: "Books", description: "Seneca, Marcus Aurelius, Epictetus, William James, Bennett, Thoreau and more, all public domain" },
     { section: "Display" },
     { key: "greenWhenBlocked", type: "bool", label: "Green when all blocked", description: "Bar icon and switches" },
     { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" }
@@ -453,7 +483,6 @@ Panel {
   }
 
   function settingDescription(item) {
-    if (item.action === "refreshPassages" && fetchProc.running) return "Fetching" + (cfg("rankWithClaude") ? " and ranking" : "") + "… this takes a few minutes"
     if (!item.kind) return item.description
     var count = allPassages.filter(function(p) { return passageKind(p) === item.kind }).length
     return item.description + "  ·  " + count + (count === 1 ? " passage" : " passages")
@@ -467,15 +496,6 @@ Panel {
   function activateSetting(item) {
     if (!item) return
     if (item.type === "bool") setCfg(item.key, !cfg(item.key))
-    else if (item.action === "refreshPassages") fetchPassages(true)
-  }
-
-  function fetchPassages(force) {
-    if (fetchProc.running) return
-    fetchProc.command = ["ruby", String(Qt.resolvedUrl("bin/fetch-passages")).replace(/^file:\/\//, "")]
-      .concat(cfg("rankWithClaude") ? [] : ["--no-rank"])
-      .concat(force ? ["--force"] : [])
-    fetchProc.running = true
   }
 
   // Add a site to, or take one out of, the `sites` setting.
@@ -646,6 +666,7 @@ Panel {
   //
   //   omarchy-shell fazzledev.mast.test start youtube   open an attempt
   //   omarchy-shell fazzledev.mast.test type 12          type the passage, 12 ms a character
+  //   omarchy-shell fazzledev.mast.test hide              never show this passage again
   //   omarchy-shell fazzledev.mast.test reason "..."     answer why
   //   omarchy-shell fazzledev.mast.test answer no        or yes, or esc
   //   omarchy-shell fazzledev.mast.test state            what the overlay shows, as JSON
@@ -678,6 +699,13 @@ Panel {
       return "ok"
     }
 
+    function hide(): string {
+      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
+      var hidden = root.confirmId
+      root.hideCurrentPassage()
+      return "hid " + hidden + ", now " + root.confirmId
+    }
+
     function answer(choice: string): string {
       if (!root.testMode || root.confirmingSite === null) return "no test attempt"
       testTyper.stop()
@@ -692,6 +720,8 @@ Panel {
         open: root.confirmingSite !== null,
         asking: root.confirmAsking,
         progress: phraseField.lastGood + "/" + root.confirmPhrase.length,
+        passage: root.confirmId,
+        passages: root.passages.length + " of " + root.allPassages.length,
         wpm: phraseField.wpm,
         typos: phraseField.typos,
         summary: root.typedSummary,
@@ -740,41 +770,25 @@ Panel {
     onLoaded: root.paragraphs = String(text() || "").split(/\n\s*\n/)
       .map(function(p) { return root.normalise(p).trim() })
       .filter(function(p) { return p !== "" })
-      .map(function(p) { return { text: p, source: "", url: "" } })
+      .map(function(p) { return { id: "paragraph-" + Qt.md5(p), text: p, source: "", url: "" } })
     onLoadFailed: root.paragraphs = []
   }
 
   FileView {
-    id: passageFile
-    path: root.passageCache
+    path: String(Qt.resolvedUrl("config/passages.json")).replace(/^file:\/\//, "")
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: {
       var list = []
       try { list = JSON.parse(text() || "[]") } catch (e) {}
-      root.fetchedPassages = (Array.isArray(list) ? list : []).filter(function(p) {
-        return p && typeof p.text === "string" && p.text.trim() !== ""
+      root.bookPassages = (Array.isArray(list) ? list : []).filter(function(p) {
+        return p && p.id && typeof p.text === "string" && p.text.trim() !== ""
       }).map(function(p) {
-        return { text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || "") }
+        return { id: String(p.id), text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || "") }
       })
     }
-    onLoadFailed: root.fetchedPassages = []
-  }
-
-  // Every few hours, so a missed week (asleep, offline) is caught up soon.
-  Timer {
-    interval: 6 * 3600 * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: root.fetchPassages(false)
-  }
-
-  Process {
-    id: fetchProc
-    // The watch misses the cache being created for the first time.
-    onExited: passageFile.reload()
+    onLoadFailed: root.bookPassages = []
   }
 
   Timer {
@@ -1406,19 +1420,45 @@ Panel {
                     model: root.historyData.passages
 
                     Column {
+                      id: passageRow
                       required property var modelData
                       width: passagesColumn.width
                       spacing: Style.space(3)
+                      readonly property bool hidden: {
+                        var score = (root.stats.passages || {})[modelData.id]
+                        return score ? score.hidden : modelData.hidden
+                      }
+                      opacity: hidden ? 0.55 : 1
 
-                      Text {
+                      Item {
                         width: parent.width
-                        textFormat: Text.PlainText
-                        text: modelData.source || "Your paragraph"
-                        color: Color.menu.text
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.bodySmall
-                        font.bold: true
-                        elide: Text.ElideRight
+                        height: Math.max(passageTitle.implicitHeight, hideToggle.height)
+
+                        Text {
+                          id: passageTitle
+                          anchors.left: parent.left
+                          anchors.right: hideToggle.left
+                          anchors.rightMargin: Style.space(8)
+                          anchors.verticalCenter: parent.verticalCenter
+                          textFormat: Text.PlainText
+                          text: (passageRow.hidden ? "Hidden  ·  " : "") + (passageRow.modelData.source || "Your paragraph")
+                          color: Color.menu.text
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.bodySmall
+                          font.bold: true
+                          elide: Text.ElideRight
+                        }
+
+                        PanelActionButton {
+                          id: hideToggle
+                          anchors.right: parent.right
+                          anchors.verticalCenter: parent.verticalCenter
+                          iconText: passageRow.hidden ? "\u{F0208}" : "\u{F0209}"
+                          tooltipText: passageRow.hidden ? "Show this passage again" : "Never show this passage again"
+                          foreground: Color.menu.text
+                          fontFamily: root.fontFamily
+                          onClicked: root.setPassageHidden(passageRow.modelData, !passageRow.hidden)
+                        }
                       }
 
                       Text {
@@ -1660,6 +1700,15 @@ Panel {
               fontFamily: root.fontFamily
               onClicked: root.shufflePassage()
             }
+
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\u{F0209}"
+              tooltipText: "Never show this passage again (Alt+H)"
+              foreground: card.text
+              fontFamily: root.fontFamily
+              onClicked: root.hideCurrentPassage()
+            }
           }
         }
 
@@ -1756,6 +1805,7 @@ Panel {
               if (event.key === Qt.Key_Left) root.stepPassage(-1)
               else if (event.key === Qt.Key_Right) root.stepPassage(1)
               else if (event.key === Qt.Key_S) root.shufflePassage()
+              else if (event.key === Qt.Key_H) root.hideCurrentPassage()
               else return
               event.accepted = true
             }
@@ -2133,8 +2183,8 @@ Panel {
         id: control
         anchors.verticalCenter: parent.verticalCenter
         width: settingRowItem.item.type === "bool" ? toggle.width
-          : settingRowItem.item.type === "int" ? stepper.width : runGlyph.width
-        height: Math.max(toggle.height, stepper.height, runGlyph.height)
+          : stepper.width
+        height: Math.max(toggle.height, stepper.height)
 
         ToggleSwitch {
           id: toggle
@@ -2181,23 +2231,6 @@ Panel {
           }
         }
 
-        Text {
-          id: runGlyph
-          visible: settingRowItem.item.type === "action"
-          anchors.verticalCenter: parent.verticalCenter
-          text: "\u{F0450}"
-          color: fetchProc.running ? root.dim : root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.heading
-
-          RotationAnimator on rotation {
-            running: fetchProc.running && runGlyph.visible
-            from: 0
-            to: 360
-            duration: 1200
-            loops: Animation.Infinite
-          }
-        }
       }
     }
   }

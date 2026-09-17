@@ -32,6 +32,7 @@ class MigrationsTest < Mast::TestCase
     Mast.reset_db!
     Mast.db.migrate!
 
-    assert_equal 2, Mast.db.execute("SELECT COUNT(*) AS n FROM schema_migrations").first["n"]
+    count = Mast.db.execute("SELECT COUNT(*) AS n FROM schema_migrations").first["n"]
+    assert_equal Mast::Migrator.new(Mast.db).pending.length, count
   end
 end

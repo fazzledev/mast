@@ -1,30 +1,44 @@
+require "digest"
+
 module Mast
   module Passages
     module Sources
-      # A public domain book, cut to the configured chapters. The text is
-      # downloaded once and kept in the cache.
+      # A public domain book from Project Gutenberg, cut to the configured
+      # sections -- or, without any, the whole text between Gutenberg's start
+      # and end markers. Downloaded once into tmp/books.
       class Gutenberg
-        SHORTLIST = 16
+        DEFAULT_LIMIT = 60
 
-        attr_reader :family
+        attr_reader :key, :source
 
         def initialize(config)
+          @key = config.fetch("key")
           @id = Integer(config.fetch("id"))
-          @family = config.fetch("source")
-          @sections = config.fetch("sections")
+          @source = config.fetch("source")
+          @sections = config["sections"]
+          @limit = config.fetch("limit", DEFAULT_LIMIT)
         end
 
+        def url = "https://www.gutenberg.org/ebooks/#{@id}"
+
+        # Non-overlapping passages, the most on-topic `limit` of them, in the
+        # order they appear. The same text always gives the same ids.
         def candidates
-          url = "https://www.gutenberg.org/ebooks/#{@id}"
-          Text.shortlist(Text.windows(paragraphs), SHORTLIST).map do |text|
-            { "text" => text, "source" => @family, "url" => url, "family" => @family }
+          spans = Text.windows(paragraphs)
+          picked = []
+          spans.sort_by { |s| [-Text.topic_score(s[2]), s[0]] }.each do |span|
+            picked << span unless picked.any? { |p| span[0] <= p[1] && p[0] <= span[1] }
+            break if picked.length >= @limit
+          end
+          picked.sort_by(&:first).map do |_, _, text|
+            { "id" => "#{@key}-#{Digest::SHA1.hexdigest(text)[0, 10]}", "text" => text, "source" => @source, "url" => url }
           end
         end
 
         private
 
         def book
-          path = File.join(Mast.cache_dir, "books", "pg#{@id}.txt")
+          path = File.join(Mast.root, "tmp", "books", "pg#{@id}.txt")
           unless File.exist?(path)
             FileUtils.mkdir_p(File.dirname(path))
             File.write("#{path}.tmp", HTTP.get("https://www.gutenberg.org/cache/epub/#{@id}/pg#{@id}.txt"))
@@ -35,9 +49,10 @@ module Mast
 
         def paragraphs
           text = book
-          @sections.flat_map do |section|
+          sections = @sections || [{ "start" => '\*\*\* START OF .*', "stop" => '\*\*\* END OF .*' }]
+          sections.flat_map do |section|
             starts = text.to_enum(:scan, /^\s*#{section.fetch("start")}\s*$/).map { Regexp.last_match }
-            raise "no section matching #{section["start"].inspect}" if starts.empty?
+            raise "#{@key}: no section matching #{section["start"].inspect}" if starts.empty?
             from = starts.last.end(0)
             to = text.index(/^\s*#{section.fetch("stop")}\s*$/, from) || text.length
             section_paragraphs(text[from...to]) + [nil]

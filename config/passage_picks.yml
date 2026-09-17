@@ -1,0 +1,342 @@
+# The passages Mast ships with, by id, per book. Chosen from the candidates
+# rake passages:candidates cuts, for how likely each is to make someone stop
+# before unblocking a site. rake passages:build writes them to
+# config/passages.json.
+seneca-shortness:
+- seneca-shortness-94ee067a58
+- seneca-shortness-7814ebe1d6
+- seneca-shortness-dc34fc4091
+- seneca-shortness-ea968f7b90
+- seneca-shortness-b8db867347
+- seneca-shortness-9b9c39529c
+- seneca-shortness-af64a67132
+- seneca-shortness-cecc2335f0
+seneca-peace:
+- seneca-peace-89b6dddc62
+- seneca-peace-e8fe093cb8
+marcus-aurelius:
+- marcus-aurelius-a48990f16a
+- marcus-aurelius-f4c62a42ef
+- marcus-aurelius-2ee2374868
+- marcus-aurelius-97259a6571
+- marcus-aurelius-2f7c7a1bdf
+- marcus-aurelius-1fc16cc5e3
+- marcus-aurelius-eb980be562
+- marcus-aurelius-7428d2bc75
+- marcus-aurelius-a0f1aa13b3
+- marcus-aurelius-a180dc47e6
+- marcus-aurelius-d9ecba58f7
+- marcus-aurelius-e534a0655b
+epictetus:
+- epictetus-b80ee04a39
+- epictetus-21c55793f2
+- epictetus-3e01da1b6e
+- epictetus-0284431ecb
+- epictetus-a97b8addce
+- epictetus-2c58bbe181
+- epictetus-bcb1b25ae7
+- epictetus-1f7e5dce6f
+james-talks:
+- james-talks-e0e5656c51
+- james-talks-adcd1db646
+- james-talks-cdc13179a4
+- james-talks-da17d16135
+- james-talks-7ef3130591
+- james-talks-1707f73c1c
+- james-talks-b4e3ca0e59
+- james-talks-7971b0b5b7
+- james-talks-78b036a5bf
+- james-talks-e7585df822
+- james-talks-4a6df273c1
+- james-talks-7a785fdc85
+- james-talks-c06f8d0b58
+- james-talks-e4372022e6
+- james-talks-fcd27eec37
+james-energies:
+- james-energies-230a8a883a
+- james-energies-c8b26f73b5
+- james-energies-19be9872fd
+- james-energies-4b7bf79b3c
+bennett-24-hours:
+- bennett-24-hours-d509458ca0
+- bennett-24-hours-5acba21c64
+- bennett-24-hours-f1b0a692dd
+- bennett-24-hours-7497ae29da
+- bennett-24-hours-ecc388027d
+- bennett-24-hours-d7ef4da458
+- bennett-24-hours-eb35817989
+- bennett-24-hours-69875cfac7
+- bennett-24-hours-d9f60e0393
+- bennett-24-hours-45a6209073
+- bennett-24-hours-65e35e2bf1
+- bennett-24-hours-dbfc383118
+- bennett-24-hours-f2572b8b83
+- bennett-24-hours-fbcd4076b5
+- bennett-24-hours-4e8a564280
+- bennett-24-hours-1bc2743631
+- bennett-24-hours-29d80b21d4
+- bennett-24-hours-4a47d0c438
+- bennett-24-hours-50a6aeb7d2
+- bennett-24-hours-9ae46a2261
+- bennett-24-hours-ba1b7cf82d
+- bennett-24-hours-f94d706f07
+- bennett-24-hours-fea892f7c1
+bennett-human-machine:
+- bennett-human-machine-a187a0f28f
+- bennett-human-machine-ade9c6f1fe
+- bennett-human-machine-d81b4ea872
+- bennett-human-machine-2e53952fa5
+- bennett-human-machine-ebef850acd
+- bennett-human-machine-42acc03549
+- bennett-human-machine-57a2fefb8f
+- bennett-human-machine-9522334874
+- bennett-human-machine-f8f7ea59bd
+bennett-mental-efficiency:
+- bennett-mental-efficiency-01f5f1dbf5
+- bennett-mental-efficiency-06053c562d
+- bennett-mental-efficiency-904adf89f9
+- bennett-mental-efficiency-0b6470cd4e
+- bennett-mental-efficiency-6a86224656
+- bennett-mental-efficiency-cea9cc28f6
+- bennett-mental-efficiency-f8ea9af10f
+thoreau-walden:
+- thoreau-walden-b23e5df377
+- thoreau-walden-0776e279d3
+- thoreau-walden-6c2f8bf498
+- thoreau-walden-c4d3670074
+- thoreau-walden-3995a91438
+- thoreau-walden-0e71e3d706
+- thoreau-walden-9e757c65d8
+- thoreau-walden-8fef9dea88
+- thoreau-walden-e1cf245217
+- thoreau-walden-6c96cb8f29
+- thoreau-walden-6aa6cc2c4f
+- thoreau-walden-d80a1a9e1f
+thoreau-walden-more:
+- thoreau-walden-more-9651a3d90a
+- thoreau-walden-more-6db0d5cb2c
+- thoreau-walden-more-561b49bda6
+- thoreau-walden-more-1aafe5c065
+- thoreau-walden-more-f4df2ced70
+emerson-self-reliance:
+- emerson-self-reliance-96bce502e1
+- emerson-self-reliance-183ab71bf1
+- emerson-self-reliance-da05021ef2
+- emerson-self-reliance-1eacc1ac54
+- emerson-self-reliance-f6b67d4de2
+schopenhauer-counsels:
+- schopenhauer-counsels-e24cfd4f8d
+- schopenhauer-counsels-9f0c9582a7
+- schopenhauer-counsels-628608ce1e
+- schopenhauer-counsels-eedb69a047
+schopenhauer-wisdom:
+- schopenhauer-wisdom-fc6dbd2c2c
+- schopenhauer-wisdom-68410b54bd
+- schopenhauer-wisdom-31e311411a
+- schopenhauer-wisdom-38e6851aa7
+- schopenhauer-wisdom-641ba53110
+- schopenhauer-wisdom-b628610f11
+- schopenhauer-wisdom-bd1fc541c0
+pascal-pensees:
+- pascal-pensees-c38f47b79e
+- pascal-pensees-1a2228d6a6
+- pascal-pensees-fb877cf793
+- pascal-pensees-0f521d03c9
+allen-as-a-man-thinketh:
+- allen-as-a-man-thinketh-cea3b6c852
+- allen-as-a-man-thinketh-a4e6bd892d
+- allen-as-a-man-thinketh-e4fbc14824
+- allen-as-a-man-thinketh-476d473b55
+- allen-as-a-man-thinketh-1a2d701470
+- allen-as-a-man-thinketh-96e9dc6098
+- allen-as-a-man-thinketh-ac07d4edf5
+smiles-self-help:
+- smiles-self-help-7a844d8274
+- smiles-self-help-c7f3dd3a98
+- smiles-self-help-53627625c1
+- smiles-self-help-baa4006db3
+- smiles-self-help-12ccd96a04
+- smiles-self-help-bb74a96f10
+- smiles-self-help-3d7ab6c16b
+- smiles-self-help-b12cd6c29d
+- smiles-self-help-56d9378c41
+- smiles-self-help-855b6b1c22
+- smiles-self-help-a837c85773
+- smiles-self-help-58c14b7f10
+- smiles-self-help-432951b75c
+smiles-character:
+- smiles-character-341e71fee2
+- smiles-character-b115b9b175
+- smiles-character-acd3aabe12
+- smiles-character-bf12c46351
+- smiles-character-c6abe04145
+- smiles-character-23cf644947
+- smiles-character-fd655ba2ba
+- smiles-character-bf5453c035
+- smiles-character-23fbf7a72c
+marden-pushing:
+- marden-pushing-932c15061c
+- marden-pushing-1414742098
+- marden-pushing-90cc3eca27
+- marden-pushing-2b562da333
+- marden-pushing-9251ca05f0
+- marden-pushing-3532f17453
+- marden-pushing-4eebfb7979
+- marden-pushing-bd61ed4395
+- marden-pushing-ecbf9de4e0
+- marden-pushing-e0751e1eab
+- marden-pushing-1f489193e6
+- marden-pushing-2892ea6910
+- marden-pushing-f29d242c1c
+- marden-pushing-7998694e7a
+- marden-pushing-991abbaedd
+- marden-pushing-cd73142db2
+- marden-pushing-f216da6166
+- marden-pushing-f24a8bfedd
+hamerton-intellectual-life:
+- hamerton-intellectual-life-03670dcf37
+- hamerton-intellectual-life-5b4b98c3cb
+- hamerton-intellectual-life-fb78d585f9
+- hamerton-intellectual-life-9270c1c019
+- hamerton-intellectual-life-68f2e1e053
+- hamerton-intellectual-life-c449c52528
+- hamerton-intellectual-life-90d3cf8fd5
+- hamerton-intellectual-life-59e858a1fe
+- hamerton-intellectual-life-6aa18d22ef
+- hamerton-intellectual-life-f87367ff03
+lubbock-pleasures:
+- lubbock-pleasures-8d3d351a5e
+- lubbock-pleasures-d1987e7fd6
+- lubbock-pleasures-11711cbf59
+- lubbock-pleasures-be8655f30b
+- lubbock-pleasures-010e77ee82
+- lubbock-pleasures-582cbb7e59
+- lubbock-pleasures-d0ef347ef2
+- lubbock-pleasures-f9b7343b90
+franklin-autobiography:
+- franklin-autobiography-caf96b4f6e
+- franklin-autobiography-b916f61428
+- franklin-autobiography-bb9df0d368
+chesterfield-letters:
+- chesterfield-letters-b1ba264fd4
+- chesterfield-letters-b3867ba909
+- chesterfield-letters-e15a8d715d
+- chesterfield-letters-739a7039de
+- chesterfield-letters-743bb55457
+- chesterfield-letters-7c66f3bae8
+- chesterfield-letters-e715c856ee
+- chesterfield-letters-ccad74d437
+hilty-happiness:
+- hilty-happiness-06ebd677ee
+- hilty-happiness-2c72bd6a19
+- hilty-happiness-fd120b0a24
+- hilty-happiness-8346ac96f7
+- hilty-happiness-cc650f0fac
+- hilty-happiness-195253848e
+- hilty-happiness-0b97919748
+- hilty-happiness-425f37ec08
+- hilty-happiness-25bf24964b
+- hilty-happiness-ebe9ed04d8
+- hilty-happiness-4a81db0292
+- hilty-happiness-37c1a5472b
+- hilty-happiness-43d999501c
+- hilty-happiness-6e0a32fd85
+- hilty-happiness-dfeefde7fb
+- hilty-happiness-ebfa095b26
+hilty-steps:
+- hilty-steps-757476acf1
+- hilty-steps-b038e9f530
+bennett-self-management:
+- bennett-self-management-07e36db7de
+- bennett-self-management-26ab5deab2
+- bennett-self-management-2a348c7c95
+- bennett-self-management-5ad4f6c0a1
+- bennett-self-management-983ec2c383
+- bennett-self-management-c349ffd94f
+james-psychology:
+- james-psychology-37cbe17b67
+- james-psychology-6dad7f2e17
+- james-psychology-bcd5aada7b
+- james-psychology-db46f1a853
+- james-psychology-e91e750ba3
+- james-psychology-40d494fa45
+- james-psychology-92fb6d7c90
+- james-psychology-00041edb61
+- james-psychology-89e93408b8
+- james-psychology-9d25be0c51
+- james-psychology-f18bd92c91
+marden-architects:
+- marden-architects-a2e1411057
+- marden-architects-f1522c5c50
+- marden-architects-43add232e8
+- marden-architects-a50c7fcf7b
+- marden-architects-0c9989b123
+- marden-architects-23d1f0fca1
+- marden-architects-252288a2d2
+- marden-architects-278ae236eb
+- marden-architects-53f8edb5cc
+- marden-architects-65bcd63700
+- marden-architects-dee5780ca8
+- marden-architects-e6191afe75
+- marden-architects-ecb63a1c32
+marden-how-to-succeed:
+- marden-how-to-succeed-8f3028caf2
+- marden-how-to-succeed-7757f1e652
+- marden-how-to-succeed-64626ab952
+- marden-how-to-succeed-bcf7846545
+- marden-how-to-succeed-1b062623e6
+- marden-how-to-succeed-1c8d0c9fb2
+- marden-how-to-succeed-638d929b70
+- marden-how-to-succeed-66fd498229
+marden-ambition:
+- marden-ambition-603bf6954f
+- marden-ambition-3d37c677c0
+- marden-ambition-b5f255ecf9
+- marden-ambition-af59ae5608
+- marden-ambition-b1e86840fa
+- marden-ambition-e615363d86
+- marden-ambition-588397ec7c
+- marden-ambition-f89f6458b2
+- marden-ambition-7e87ae1da2
+- marden-ambition-9dabc01b8e
+- marden-ambition-d5995ff91c
+marden-victorious:
+- marden-victorious-7dfdd02dfb
+- marden-victorious-46d9e80ced
+- marden-victorious-e6fdc84fc5
+- marden-victorious-1d45503c9e
+- marden-victorious-385d8df6b3
+- marden-victorious-3ce87c3185
+emerson-society-solitude:
+- emerson-society-solitude-ff7d7ff629
+- emerson-society-solitude-10fb37fc79
+- emerson-society-solitude-edfb5d5e68
+emerson-conduct-of-life:
+- emerson-conduct-of-life-7f396374a2
+- emerson-conduct-of-life-78f5695586
+- emerson-conduct-of-life-908ebe1493
+carlyle-past-present:
+- carlyle-past-present-7359a370d7
+wagner-simple-life:
+- wagner-simple-life-38fad071ff
+- wagner-simple-life-68cd41a6df
+atkinson-concentration:
+- atkinson-concentration-cf47b8f0eb
+- atkinson-concentration-7eded8e69c
+- atkinson-concentration-d3a6a784ff
+- atkinson-concentration-26a617e542
+- atkinson-concentration-73983598d4
+- atkinson-concentration-8ee62b1531
+- atkinson-concentration-a223adaddd
+allen-way-of-peace:
+- allen-way-of-peace-a10799121d
+- allen-way-of-peace-ac9b47c30e
+- allen-way-of-peace-58bc9535a0
+seneca-morals:
+- seneca-morals-ddde07aadd
+- seneca-morals-3bf6f9d448
+- seneca-morals-f82e10a194
+- seneca-morals-40bff118ae
+- seneca-morals-4474dd1e2a
+- seneca-morals-3e52632565
+- seneca-morals-ee95b79043

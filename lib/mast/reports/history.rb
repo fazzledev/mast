@@ -28,8 +28,9 @@ module Mast
 
       def passage_json(p)
         {
-          source: p.source, opening: p.opening, shown: p.shown, skipped: p.skipped,
-          walked_away: p.walked_away, kept_blocked: p.kept_blocked, unblocked: p.unblocked,
+          id: p.id, text: p.text, source: p.source, url: p.url, opening: p.opening, shown: p.shown,
+          skipped: p.skipped, walked_away: p.walked_away, kept_blocked: p.kept_blocked, unblocked: p.unblocked,
+          hidden: p.hidden?,
         }
       end
     end

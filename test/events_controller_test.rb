@@ -46,6 +46,22 @@ class EventsControllerTest < Mast::TestCase
     assert_equal 1, Mast::Passage.where.length
   end
 
+  def test_shipped_passages_keep_their_ids
+    event("start", attempt: "a1", site: "youtube", label: "YouTube")
+    event("passage", attempt: "a1", seq: 0, passage_id: "seneca-shortness-0123456789", text: "Words", source: "Seneca", url: "u")
+
+    assert_equal "Words", Mast::Passage.find("seneca-shortness-0123456789").text
+    assert_equal "seneca-shortness-0123456789", Mast::PassageView.find("a1", 0).passage_id
+  end
+
+  def test_hiding_a_passage_and_showing_it_again
+    event("hide", passage_id: "p1", text: "Never again", source: "", url: "")
+    assert Mast::Passage.find("p1").hidden?
+
+    event("hide", passage_id: "p1", text: "Never again", source: "", url: "", hidden: false)
+    refute Mast::Passage.find("p1").hidden?
+  end
+
   def test_unknown_events_and_outcomes_are_refused
     assert_raises(Mast::EventsController::UnknownEvent) { event("explode") }
     event("start", attempt: "a1", site: "youtube", label: "YouTube")

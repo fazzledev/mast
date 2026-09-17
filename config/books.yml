@@ -1,0 +1,245 @@
+# Public domain books Mast's passages are cut from. See lib/mast/passages.rb.
+#
+# Each book has a `key` (the prefix of its passages' ids), its Project
+# Gutenberg `id`, the `source` line shown under a passage, and optionally:
+#
+#   sections  where to cut from: each runs from a line matching `start` to one
+#             matching `stop` (regexes). The last match of `start` wins, so a
+#             table of contents never counts as the chapter. Without any, the
+#             whole book.
+#   limit     how many candidates to cut, the most on-topic first (default 60)
+
+books:
+  - key: seneca-shortness
+    id: 64576
+    source: Seneca, On the Shortness of Life (tr. Aubrey Stewart, 1900)
+    limit: 30
+    sections:
+      - { start: 'OF THE SHORTNESS OF LIFE\.', stop: 'THE ELEVENTH BOOK' }
+
+  - key: seneca-peace
+    id: 64576
+    source: Seneca, Of Peace of Mind (tr. Aubrey Stewart, 1900)
+    limit: 20
+    sections:
+      - { start: 'OF PEACE OF MIND\.', stop: 'OF THE SHORTNESS OF LIFE\.' }
+
+  - key: marcus-aurelius
+    id: 15877
+    source: Marcus Aurelius, Thoughts (tr. George Long)
+    limit: 45
+
+  - key: epictetus
+    id: 10661
+    source: Epictetus, Discourses and Encheiridion (tr. George Long)
+    limit: 55
+
+  - key: james-talks
+    id: 16287
+    source: William James, Talks to Teachers on Psychology (1899)
+    limit: 60
+    sections:
+      - { start: 'VIII\. THE LAWS OF HABIT', stop: 'IX\. THE ASSOCIATION OF IDEAS' }
+      - { start: 'XI\. ATTENTION', stop: 'XII\. MEMORY' }
+      - { start: 'XV\. THE WILL', stop: 'I\. THE GOSPEL OF RELAXATION' }
+      - { start: 'I\. THE GOSPEL OF RELAXATION', stop: 'II\. ON A CERTAIN BLINDNESS IN HUMAN BEINGS' }
+
+  - key: james-energies
+    id: 20768
+    source: William James, The Energies of Men (1907)
+    limit: 15
+    sections:
+      - { start: 'THE ENERGIES OF MEN\[1\]', stop: 'THE MORAL EQUIVALENT OF WAR\[1\]' }
+
+  - key: bennett-24-hours
+    id: 2274
+    source: Arnold Bennett, How to Live on 24 Hours a Day (1908)
+    limit: 60
+
+  - key: bennett-human-machine
+    id: 12811
+    source: Arnold Bennett, The Human Machine (1908)
+    limit: 25
+
+  - key: bennett-mental-efficiency
+    id: 23347
+    source: Arnold Bennett, Mental Efficiency (1911)
+    limit: 25
+
+  - key: thoreau-walden
+    id: 205
+    source: Henry David Thoreau, Walden (1854)
+    limit: 30
+    sections:
+      - { start: 'Where I Lived, and What I Lived For', stop: 'Reading' }
+      - { start: 'Conclusion', stop: 'ON THE DUTY OF CIVIL DISOBEDIENCE' }
+
+  - key: thoreau-walden-more
+    id: 205
+    source: Henry David Thoreau, Walden (1854)
+    limit: 40
+    sections:
+      - { start: 'Economy', stop: 'Where I Lived, and What I Lived For' }
+      - { start: 'Reading', stop: 'Conclusion' }
+
+  - key: emerson-self-reliance
+    id: 2944
+    source: Ralph Waldo Emerson, Self-Reliance (1841)
+    limit: 20
+    sections:
+      - { start: 'SELF-RELIANCE', stop: 'COMPENSATION' }
+
+  - key: schopenhauer-counsels
+    id: 10715
+    source: Arthur Schopenhauer, Counsels and Maxims (tr. T. Bailey Saunders)
+    limit: 20
+
+  - key: schopenhauer-wisdom
+    id: 10741
+    source: Arthur Schopenhauer, The Wisdom of Life (tr. T. Bailey Saunders)
+    limit: 20
+
+  - key: pascal-pensees
+    id: 18269
+    source: Blaise Pascal, Pensees
+    limit: 25
+
+  - key: allen-as-a-man-thinketh
+    id: 4507
+    source: James Allen, As a Man Thinketh (1903)
+    limit: 15
+
+  - key: smiles-self-help
+    id: 935
+    source: Samuel Smiles, Self-Help (1859)
+    limit: 60
+
+  - key: smiles-character
+    id: 2541
+    source: Samuel Smiles, Character (1871)
+    limit: 40
+
+  - key: marden-pushing
+    id: 21291
+    source: Orison Swett Marden, Pushing to the Front
+    limit: 60
+
+  - key: marden-iron-will
+    id: 13160
+    source: Orison Swett Marden, An Iron Will (1901)
+    limit: 15
+
+  - key: hamerton-intellectual-life
+    id: 32151
+    source: Philip Gilbert Hamerton, The Intellectual Life (1873)
+    limit: 40
+
+  - key: lubbock-pleasures
+    id: 7952
+    source: John Lubbock, The Pleasures of Life (1887)
+    limit: 40
+
+  - key: franklin-autobiography
+    id: 20203
+    source: Benjamin Franklin, Autobiography
+    limit: 15
+
+  - key: chesterfield-letters
+    id: 3361
+    source: Lord Chesterfield, Letters to His Son
+    limit: 40
+
+  - key: hilty-happiness
+    id: 68817
+    source: Carl Hilty, Happiness (tr. Francis Greenwood Peabody, 1903)
+    limit: 50
+
+  - key: hilty-steps
+    id: 71785
+    source: Carl Hilty, The Steps of Life (tr. Melvin Brandow, 1907)
+    limit: 30
+
+  - key: bennett-self-management
+    id: 75928
+    source: Arnold Bennett, Self and Self-Management (1918)
+    limit: 30
+
+  - key: james-psychology
+    id: 55262
+    source: William James, Psychology (1892)
+    limit: 30
+
+  - key: marden-architects
+    id: 21622
+    source: Orison Swett Marden, Architects of Fate (1897)
+    limit: 40
+
+  - key: marden-how-to-succeed
+    id: 20513
+    source: Orison Swett Marden, How to Succeed (1896)
+    limit: 30
+
+  - key: marden-ambition
+    id: 57651
+    source: Orison Swett Marden, Ambition and Success (1919)
+    limit: 25
+
+  - key: marden-victorious
+    id: 41901
+    source: Orison Swett Marden, The Victorious Attitude (1916)
+    limit: 20
+
+  - key: smiles-thrift
+    id: 14418
+    source: Samuel Smiles, Thrift (1875)
+    limit: 20
+
+  - key: emerson-society-solitude
+    id: 69258
+    source: Ralph Waldo Emerson, Society and Solitude (1870)
+    limit: 30
+
+  - key: emerson-conduct-of-life
+    id: 39827
+    source: Ralph Waldo Emerson, The Conduct of Life (1860)
+    limit: 25
+
+  - key: carlyle-past-present
+    id: 13534
+    source: Thomas Carlyle, Past and Present (1843)
+    limit: 20
+
+  - key: wagner-simple-life
+    id: 23092
+    source: Charles Wagner, The Simple Life (tr. Mary Louise Hendee, 1901)
+    limit: 25
+
+  - key: atkinson-concentration
+    id: 1570
+    source: Theron Q. Dumont, The Power of Concentration
+    limit: 30
+
+  - key: haddock-mastery
+    id: 4286
+    source: Frank Channing Haddock, Mastery of Self
+    limit: 25
+
+  - key: conwell-will-power
+    id: 33952
+    source: Russell H. Conwell, What You Can Do With Your Will Power (1917)
+    limit: 20
+
+  - key: allen-way-of-peace
+    id: 10740
+    source: James Allen, The Way of Peace (1907)
+    limit: 15
+
+  - key: franklin-way-to-wealth
+    id: 43855
+    source: Benjamin Franklin, The Way to Wealth (1758)
+    limit: 10
+
+  - key: seneca-morals
+    id: 56075
+    source: Seneca, Morals (tr. Roger L'Estrange)
+    limit: 20

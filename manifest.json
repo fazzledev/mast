@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fazzledev.mast",
   "name": "Mast",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "author": "fazzledev",
   "description": "Tie yourself to the mast: block distracting sites, and make unblocking one cost a typed passage, a reason, and a relock.",
   "kinds": [
@@ -28,9 +28,6 @@
       "relockMinutes": 15,
       "sourceParagraphs": true,
       "sourceBooks": true,
-      "sourceBlogs": true,
-      "sourceNews": true,
-      "rankWithClaude": true,
       "greenWhenBlocked": true,
       "showWeekStats": true
     },
@@ -141,28 +138,7 @@
         "key": "sourceBooks",
         "type": "boolean",
         "label": "Books",
-        "description": "Public domain chapters on time and habit, from Project Gutenberg.",
-        "defaultValue": true
-      },
-      {
-        "key": "sourceBlogs",
-        "type": "boolean",
-        "label": "Blogs",
-        "description": "Cal Newport and James Clear.",
-        "defaultValue": true
-      },
-      {
-        "key": "sourceNews",
-        "type": "boolean",
-        "label": "News",
-        "description": "Research pieces from The Conversation.",
-        "defaultValue": true
-      },
-      {
-        "key": "rankWithClaude",
-        "type": "boolean",
-        "label": "Rank with Claude",
-        "description": "Keep only fetched passages claude -p scores as convincing. Off keeps keyword picks.",
+        "description": "Excerpts from public domain books that ship with Mast: Seneca, Marcus Aurelius, Epictetus, William James, Bennett, Thoreau and more.",
         "defaultValue": true
       },
       {

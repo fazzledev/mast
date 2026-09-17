@@ -35,10 +35,20 @@ namespace :db do
 end
 
 namespace :passages do
-  desc "Fetch and rank a new passage pool now (NO_RANK=1 for keyword picks)"
-  task :refresh do
+  def passages
     $LOAD_PATH.unshift(File.expand_path("lib", __dir__))
     require "mast/passages"
-    Mast::Passages::Pool.new.refresh(force: true, rank: !ENV["NO_RANK"])
+  end
+
+  desc "Cut config/books.yml into candidate passages in tmp/candidates, to read and pick from"
+  task :candidates do
+    passages
+    Mast::Passages.write_candidates
+  end
+
+  desc "Write the passages picked in config/passage_picks.yml to config/passages.json"
+  task :build do
+    passages
+    Mast::Passages.build
   end
 end

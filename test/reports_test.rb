@@ -14,6 +14,17 @@ class ReportsTest < Mast::TestCase
     assert_equal "one video", stats[:sites]["youtube"][:open_reason]
   end
 
+  def test_stats_score_every_passage_and_mark_the_hidden
+    attempt("a1", outcome: "walked_away", text: "Winner")
+    attempt("a2", outcome: "unblocked", text: "Loser")
+    event("hide", passage_id: "never-shown", text: "Hidden unseen", source: "", url: "")
+
+    scores = Mast::Reports::Stats.new.as_json[:passages]
+    assert_equal({ won: 1, lost: 0, hidden: false }, scores[Mast::Passage.digest("Winner")])
+    assert_equal({ won: 0, lost: 1, hidden: false }, scores[Mast::Passage.digest("Loser")])
+    assert_equal({ won: 0, lost: 0, hidden: true }, scores["never-shown"])
+  end
+
   def test_history_scores_passages_by_battles_won
     attempt("a1", outcome: "walked_away", text: "Winner")
     attempt("a2", outcome: "kept_blocked", text: "Winner")

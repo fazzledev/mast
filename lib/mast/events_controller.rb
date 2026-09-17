@@ -4,7 +4,7 @@ module Mast
   # below, and `at`, the widget's clock in milliseconds.
   #
   #   start          attempt, site, label        a blocked site's switch was flipped
-  #   passage        attempt, seq, text, source, url
+  #   passage        attempt, seq, passage_id, text, source, url
   #                                              a passage went on screen
   #   leave          attempt, seq, chars         it was swapped, or the attempt ended mid-typing
   #   typed          attempt, seq, chars, typing_ms, wpm, peak_wpm, typos
@@ -12,13 +12,14 @@ module Mast
   #   end            attempt, outcome, reason    the attempt ended
   #   relock         site, relock_at             an unblocked site's relock time became known
   #   blocked_again  site                        an unblocked site was seen blocked again
+  #   hide           passage_id, text, hidden    never show a passage again, or show it again
   class EventsController
     class UnknownEvent < StandardError; end
 
     # `end` is a keyword, so its action is `finish`.
     ACTIONS = {
       "start" => :start, "passage" => :passage, "leave" => :leave, "typed" => :typed,
-      "end" => :finish, "relock" => :relock, "blocked_again" => :blocked_again,
+      "end" => :finish, "relock" => :relock, "blocked_again" => :blocked_again, "hide" => :hide,
     }.freeze
 
     def self.dispatch(event) = new(event).process
@@ -49,7 +50,8 @@ module Mast
     end
 
     def passage
-      passage = Passage.record(text: params.fetch("text"), source: params["source"], url: params["url"], at: at)
+      passage = Passage.record(id: params["passage_id"], text: params.fetch("text"), source: params["source"],
+                               url: params["url"], at: at)
       PassageView.create({ attempt_id: params.fetch("attempt"), seq: params.fetch("seq"), passage_id: passage.id,
                            shown_at: at }, replace: true)
     end
@@ -80,6 +82,14 @@ module Mast
 
     def blocked_again
       Attempt.still_unblocked(params.fetch("site")).each { |a| a.update(blocked_again_at: at) }
+    end
+
+    # A passage can be hidden before it was ever recorded, so it is recorded
+    # here if need be.
+    def hide
+      passage = Passage.record(id: params.fetch("passage_id"), text: params.fetch("text"), source: params["source"],
+                               url: params["url"], at: at)
+      passage.update(hidden_at: params["hidden"] == false ? nil : at)
     end
   end
 end
