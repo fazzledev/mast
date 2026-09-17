@@ -47,8 +47,9 @@ rake passages:build           # write config/passage_picks.yml to config/passage
 
 The Ruby side is laid out like a Rails app without the gems; see
 `lib/mast.rb`. The QML follows it: `Panel.qml` is the widget, `Recorder.qml`
-is everything that reaches the record, and `views/` holds a folder per screen
-with the rows it is built from. `rake test` also covers the root helper: `test/system` runs
+is everything that reaches the record, and `views/` holds a folder per
+screen -- panel, settings, history, unblock -- with the rows each is built
+from. `rake test` also covers the root helper: `test/system` runs
 `system/mast` itself against a temporary directory instead of `/etc` and
 `/var` (`MAST_PREFIX`), with systemd faked, so blocking, unblocking, the
 relock cap and `restore` are checked without root.
