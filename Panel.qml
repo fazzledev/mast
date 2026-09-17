@@ -6,6 +6,11 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
+// The screens this is made of, each with the rows it is built from.
+import "views/panel"
+import "views/settings"
+import "views/unblock"
+
 // Mast: bar toggles for the site block that system/ installs. Named
 // for Ulysses, who had himself tied to the mast before the Sirens could sing.
 //
