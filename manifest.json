@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fazzledev.site-block",
   "name": "Site Block",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "author": "fazzledev",
   "description": "Shows which distracting sites are blocked and toggles each one, behind an auth prompt.",
   "kinds": [
@@ -20,7 +20,19 @@
       "sites": [
         "youtube",
         "twitter"
-      ]
+      ],
+      "allowSwitching": true,
+      "showWpm": true,
+      "reasonWords": 3,
+      "coolOffSeconds": 0,
+      "relockMinutes": 15,
+      "sourceParagraphs": true,
+      "sourceBooks": true,
+      "sourceBlogs": true,
+      "sourceNews": true,
+      "rankWithClaude": true,
+      "greenWhenBlocked": true,
+      "showWeekStats": true
     },
     "schema": [
       {
@@ -73,6 +85,99 @@
           "youtube",
           "twitter"
         ]
+      },
+      {
+        "key": "allowSwitching",
+        "type": "boolean",
+        "label": "Switch passages",
+        "description": "Previous, next and shuffle on the unblock screen.",
+        "defaultValue": true
+      },
+      {
+        "key": "showWpm",
+        "type": "boolean",
+        "label": "Live typing speed",
+        "description": "Words per minute while typing a passage.",
+        "defaultValue": true
+      },
+      {
+        "key": "reasonWords",
+        "type": "integer",
+        "label": "Words needed to say why",
+        "description": "How many words the why answer needs before yes works. 0 makes it optional.",
+        "defaultValue": 3,
+        "min": 0,
+        "max": 20,
+        "step": 1
+      },
+      {
+        "key": "coolOffSeconds",
+        "type": "integer",
+        "label": "Wait before yes",
+        "description": "Seconds after typing the passage before yes can be chosen.",
+        "defaultValue": 0,
+        "min": 0,
+        "max": 300,
+        "step": 15
+      },
+      {
+        "key": "relockMinutes",
+        "type": "integer",
+        "label": "Unblock lasts (minutes)",
+        "description": "How long an unblock lasts before the site blocks itself again. The helper caps it at 60.",
+        "defaultValue": 15,
+        "min": 1,
+        "max": 60,
+        "step": 1
+      },
+      {
+        "key": "sourceParagraphs",
+        "type": "boolean",
+        "label": "Your paragraphs",
+        "description": "The hand-written passages in paragraphs.txt.",
+        "defaultValue": true
+      },
+      {
+        "key": "sourceBooks",
+        "type": "boolean",
+        "label": "Books",
+        "description": "Public domain chapters on time and habit, from Project Gutenberg.",
+        "defaultValue": true
+      },
+      {
+        "key": "sourceBlogs",
+        "type": "boolean",
+        "label": "Blogs",
+        "description": "Cal Newport and James Clear.",
+        "defaultValue": true
+      },
+      {
+        "key": "sourceNews",
+        "type": "boolean",
+        "label": "News",
+        "description": "Research pieces from The Conversation.",
+        "defaultValue": true
+      },
+      {
+        "key": "rankWithClaude",
+        "type": "boolean",
+        "label": "Rank with Claude",
+        "description": "Keep only fetched passages claude -p scores as convincing. Off keeps keyword picks.",
+        "defaultValue": true
+      },
+      {
+        "key": "greenWhenBlocked",
+        "type": "boolean",
+        "label": "Green when all blocked",
+        "description": "The bar icon and switches turn green when every listed site is blocked.",
+        "defaultValue": true
+      },
+      {
+        "key": "showWeekStats",
+        "type": "boolean",
+        "label": "Week stats",
+        "description": "Unblock battles won and time unblocked, in the panel and the unblock screen.",
+        "defaultValue": true
       }
     ]
   }

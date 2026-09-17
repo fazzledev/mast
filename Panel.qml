@@ -28,6 +28,12 @@ import qs.Ui
 // record through site-block-db.rb, which also serves the week's numbers shown
 // here and lets you look back at your reasons from a terminal.
 //
+// Most of this can be tuned from a settings popover (the gear in the panel
+// header, or S): passage switching, the live wpm, how many words the why
+// needs, a wait before yes, how long an unblock lasts, which passage sources
+// are used and whether Claude ranks them, and the display extras. They are
+// ordinary widget settings, declared in manifest.json and saved to shell.json.
+//
 // Every unblock is temporary: the helper arms a systemd timer that blocks the
 // site again, and each row counts down to it.
 //
@@ -137,7 +143,7 @@ Panel {
   // in urgent as a reminder that it is still off.
   property color green: "#4caf50"
   readonly property string barGlyph: allBlocked ? "󰕥" : "󰦞"
-  readonly property color barIconColor: allBlocked ? green : urgent
+  readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
   // [{ text, source, url }]. Blank-line separated paragraphs from
   // paragraphs.txt, whitespace collapsed so line wrapping in the file never
@@ -145,7 +151,20 @@ Panel {
   property var paragraphs: []
   // ...and the fetched excerpts, which have one.
   property var fetchedPassages: []
-  readonly property var passages: paragraphs.concat(fetchedPassages)
+  readonly property var allPassages: paragraphs.concat(fetchedPassages)
+  // Which source a passage came from, going by its link.
+  function passageKind(p) {
+    if (!p.url) return "paragraphs"
+    if (p.url.indexOf("gutenberg.org") !== -1) return "books"
+    if (p.url.indexOf("theconversation.com") !== -1) return "news"
+    return "blogs"
+  }
+  readonly property var passages: {
+    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks"), blogs: cfg("sourceBlogs"), news: cfg("sourceNews") }
+    var list = allPassages.filter(function(p) { return on[passageKind(p)] })
+    // Turning every source off must not take the challenge away with it.
+    return list.length > 0 ? list : allPassages
+  }
   readonly property string passageCache: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/fazzledev-site-block/passages.json"
 
   visible: installed
@@ -197,12 +216,12 @@ Panel {
   }
 
   function stepPassage(delta) {
-    if (passages.length < 2) return
+    if (!cfg("allowSwitching") || passages.length < 2) return
     showPassage((confirmIndex + delta + passages.length) % passages.length)
   }
 
   function shufflePassage() {
-    if (passages.length > 1) showPassage(randomPassageIndex())
+    if (cfg("allowSwitching") && passages.length > 1) showPassage(randomPassageIndex())
   }
 
   readonly property string dbScript: String(Qt.resolvedUrl("site-block-db.rb")).replace(/^file:\/\//, "")
@@ -257,7 +276,7 @@ Panel {
 
   // The week so far, as a reminder on both overlay pages.
   function weekText(site) {
-    if (!site) return ""
+    if (!site || !cfg("showWeekStats")) return ""
     var here = siteStats(site.name)
     var all = stats.week || {}
     var parts = []
@@ -270,7 +289,20 @@ Panel {
   }
 
   function reasonGiven() {
-    return reasonField.text.trim().split(/\s+/).filter(function(w) { return w !== "" }).length >= 3
+    var need = cfg("reasonWords")
+    return need <= 0 || reasonField.text.trim().split(/\s+/).filter(function(w) { return w !== "" }).length >= need
+  }
+
+  // The wait before yes: when it ends, and a clock that ticks until then.
+  property real yesAt: 0
+  property real askClock: 0
+  readonly property int coolOffLeft: Math.ceil(Math.max(0, yesAt - askClock) / 1000)
+
+  Timer {
+    interval: 250
+    repeat: true
+    running: root.confirmAsking && root.coolOffLeft > 0
+    onTriggered: root.askClock = Date.now()
   }
 
   // Seconds since the epoch, ticking while anything is counting down.
@@ -291,7 +323,9 @@ Panel {
     lastError = ""
     pendingSite = site.name
     pendingBlock = on
-    toggleProc.command = ["pkexec", root.helper, on ? "on" : "off", site.name]
+    toggleProc.command = on
+      ? ["pkexec", root.helper, "on", site.name]
+      : ["pkexec", root.helper, "off", site.name, String(cfg("relockMinutes"))]
     toggleProc.running = true
   }
 
@@ -301,20 +335,120 @@ Panel {
     else showSite(hiddenSites[index - moreIndex - 1])
   }
 
-  // Save the `sites` setting in-process, the way the clock widget saves its
-  // format. Not `omarchy bar set`: its IPC hop splits arguments on commas, which
-  // breaks any JSON array longer than one element. updateEntryInline replaces
-  // the whole bar entry, so every other setting is carried over. The shell
-  // writes shell.json through its symlink, so the change lands in dotfiles.
-  function saveSites(names) {
+  // Save settings in-process, the way the clock widget saves its format. Not
+  // `omarchy bar set`: its IPC hop splits arguments on commas, which breaks any
+  // JSON array longer than one element. updateEntryInline replaces the whole
+  // bar entry, so every other setting -- including changes still on their way
+  // -- is carried over. The shell writes shell.json through its symlink, so
+  // the change lands in dotfiles.
+  function saveSettings(patch) {
     if (!bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") {
-      lastError = "Could not save the site list: this bar does not allow widget settings writes."
+      lastError = "Could not save settings: this bar does not allow widget settings writes."
       return
     }
     var entry = { id: root.moduleName }
     for (var key in root.settings) if (key !== "id") entry[key] = root.settings[key]
-    entry.sites = names
+    for (var pending in settingOverrides) entry[pending] = settingOverrides[pending]
+    for (var changed in patch) entry[changed] = patch[changed]
     bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  function saveSites(names) { saveSettings({ sites: names }) }
+
+  // ------------------------------------------------------------ settings
+  // Defaults match manifest.json. Changes show at once through the overrides
+  // and reach shell.json a moment later.
+  readonly property var settingDefaults: ({
+    allowSwitching: true, showWpm: true, reasonWords: 3, coolOffSeconds: 0, relockMinutes: 15,
+    sourceParagraphs: true, sourceBooks: true, sourceBlogs: true, sourceNews: true, rankWithClaude: true,
+    greenWhenBlocked: true, showWeekStats: true
+  })
+  property var settingOverrides: ({})
+
+  function cfg(key) {
+    if (settingOverrides[key] !== undefined) return settingOverrides[key]
+    return setting(key, settingDefaults[key])
+  }
+
+  function setCfg(key, value) {
+    var next = Object.assign({}, settingOverrides)
+    next[key] = value
+    settingOverrides = next
+    var patch = {}
+    patch[key] = value
+    saveSettings(patch)
+  }
+
+  // The settings popover's rows. `section` rows are headings; the rest take
+  // the cursor, in order.
+  readonly property var settingsRows: [
+    { section: "Typing challenge" },
+    { key: "allowSwitching", type: "bool", label: "Switch passages", description: "Previous, next and shuffle on the unblock screen" },
+    { key: "showWpm", type: "bool", label: "Live typing speed", description: "Words per minute while you type" },
+    { key: "reasonWords", type: "int", min: 0, max: 20, step: 1, unit: " words", label: "Why needs", description: "Words the why answer needs before yes works; 0 makes it optional" },
+    { key: "coolOffSeconds", type: "int", min: 0, max: 300, step: 15, unit: "s", label: "Wait before yes", description: "After the passage is typed" },
+    { section: "Relock" },
+    { key: "relockMinutes", type: "int", min: 1, max: 60, step: 1, unit: " min", label: "Unblock lasts", description: "Then the site blocks itself again. The helper caps it at 60." },
+    { section: "Passages" },
+    { key: "sourceParagraphs", type: "bool", kind: "paragraphs", label: "Your paragraphs", description: "paragraphs.txt" },
+    { key: "sourceBooks", type: "bool", kind: "books", label: "Books", description: "Seneca, William James, Bennett, Thoreau, Marcus Aurelius, Epictetus" },
+    { key: "sourceBlogs", type: "bool", kind: "blogs", label: "Blogs", description: "Cal Newport, James Clear" },
+    { key: "sourceNews", type: "bool", kind: "news", label: "News", description: "Researchers writing in The Conversation" },
+    { key: "rankWithClaude", type: "bool", label: "Rank with Claude", description: "Keep only fetched passages claude -p scores as convincing; off keeps keyword picks" },
+    { action: "refreshPassages", type: "action", label: "Refresh passages now", description: "Fetch a new pool; takes a few minutes with ranking" },
+    { section: "Display" },
+    { key: "greenWhenBlocked", type: "bool", label: "Green when all blocked", description: "Bar icon and switches" },
+    { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" }
+  ]
+  readonly property var settingsItems: settingsRows.filter(function(r) { return !r.section })
+
+  property bool settingsOpen: false
+  property int settingsCursor: 0
+  property bool settingsCursorActive: false
+
+  // Stands in for a Panel as the settings popover's owner, so the bar's
+  // one-popover-at-a-time coordination closes it like any other.
+  QtObject {
+    id: settingsOwner
+    property bool popoutSwitchClosing: false
+    function close() { root.settingsOpen = false }
+  }
+
+  function openSettings() {
+    settingsCursorActive = false
+    settingsCursor = 0
+    settingsOpen = true
+  }
+
+  function backFromSettings() {
+    settingsOpen = false
+    open()
+  }
+
+  function settingDescription(item) {
+    if (item.action === "refreshPassages" && fetchProc.running) return "Fetching" + (cfg("rankWithClaude") ? " and ranking" : "") + "… this takes a few minutes"
+    if (!item.kind) return item.description
+    var count = allPassages.filter(function(p) { return passageKind(p) === item.kind }).length
+    return item.description + "  ·  " + count + (count === 1 ? " passage" : " passages")
+  }
+
+  function adjustSetting(item, direction) {
+    if (!item || item.type !== "int") return
+    setCfg(item.key, Math.max(item.min, Math.min(item.max, cfg(item.key) + direction * item.step)))
+  }
+
+  function activateSetting(item) {
+    if (!item) return
+    if (item.type === "bool") setCfg(item.key, !cfg(item.key))
+    else if (item.action === "refreshPassages") fetchPassages(true)
+  }
+
+  function fetchPassages(force) {
+    if (fetchProc.running) return
+    fetchProc.command = ["ruby", String(Qt.resolvedUrl("fetch-passages.rb")).replace(/^file:\/\//, "")]
+      .concat(cfg("rankWithClaude") ? [] : ["--no-rank"])
+      .concat(force ? ["--force"] : [])
+    fetchProc.running = true
   }
 
   // Add a site to, or take one out of, the `sites` setting.
@@ -414,6 +548,8 @@ Panel {
              wpm: wpm, peak_wpm: typedSummary.peakWpm, typos: f.typos })
     reasonField.text = ""
     reasonMissing = false
+    askClock = Date.now()
+    yesAt = askClock + cfg("coolOffSeconds") * 1000
     confirmAsking = true
     // No is the default: Enter from the buttons straight away keeps the block.
     askKeys.yesSelected = false
@@ -520,7 +656,7 @@ Panel {
       testTyper.stop()
       if (choice === "yes") root.finishConfirm()
       else root.cancelConfirm()
-      return root.confirmingSite === null ? "closed" : "still open: " + (root.reasonMissing ? "reason missing" : "?")
+      return root.confirmingSite === null ? "closed" : "still open: " + (root.reasonMissing ? "reason missing" : root.coolOffLeft > 0 ? "yes available in " + root.coolOffLeft + "s" : "?")
     }
 
     function state(): string {
@@ -605,12 +741,11 @@ Panel {
     repeat: true
     running: true
     triggeredOnStart: true
-    onTriggered: if (!fetchProc.running) fetchProc.running = true
+    onTriggered: root.fetchPassages(false)
   }
 
   Process {
     id: fetchProc
-    command: ["ruby", String(Qt.resolvedUrl("fetch-passages.rb")).replace(/^file:\/\//, "")]
     // The watch misses the cache being created for the first time.
     onExited: passageFile.reload()
   }
@@ -728,6 +863,7 @@ Panel {
       onDeleteRequested: if (root.cursorActive && root.cursorIndex < root.shownSites.length) root.removeSite(root.shownSites[root.cursorIndex])
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(key) { if (key === "s" || key === "S") root.openSettings() }
 
       Column {
         id: column
@@ -735,8 +871,21 @@ Panel {
         spacing: Style.space(12)
 
         PanelHero {
+          id: siteBlockHero
           width: parent.width
           title: "Site Block"
+          // Inside the hero's own components `root` is the hero, so they
+          // reach this panel through the hero's id.
+          readonly property var panelRoot: root
+          trailingControl: Component {
+            PanelActionButton {
+              iconText: "\u{F0493}"
+              tooltipText: "Settings (S)"
+              foreground: siteBlockHero.foreground
+              fontFamily: siteBlockHero.fontFamily
+              onClicked: siteBlockHero.panelRoot.openSettings()
+            }
+          }
           meta: root.blockedCount + " of " + root.shownSites.length + " sites blocked"
           foreground: root.foreground
           fontFamily: root.fontFamily
@@ -754,7 +903,7 @@ Panel {
           visible: text !== ""
           width: parent.width
           textFormat: Text.PlainText
-          text: root.stats.week && root.stats.week.attempts > 0
+          text: root.cfg("showWeekStats") && root.stats.week && root.stats.week.attempts > 0
             ? root.battlesText() + " this week" : ""
           color: root.foreground
           font.family: root.fontFamily
@@ -805,6 +954,136 @@ Panel {
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------ settings popover
+  // `omarchy-shell fazzledev.site-block.settings open`, for a keybinding.
+  IpcHandler {
+    target: "fazzledev.site-block.settings"
+    function open(): void { root.openSettings() }
+    function close(): void { root.settingsOpen = false }
+    function toggle(): void { if (root.settingsOpen) root.settingsOpen = false; else root.openSettings() }
+  }
+
+  KeyboardPanel {
+    id: settingsPanel
+    anchorItem: button
+    owner: settingsOwner
+    bar: root.bar
+    open: root.settingsOpen
+    focusTarget: settingsKeys
+    contentWidth: settingsPanel.fittedContentWidth(Style.space(380))
+    contentHeight: settingsPanel.fittedContentHeight(settingsColumn.implicitHeight, Style.space(820))
+
+    PanelKeyCatcher {
+      id: settingsKeys
+      anchors.fill: parent
+      onMoveRequested: function(dx, dy) {
+        if (!root.settingsCursorActive) { root.settingsCursorActive = true; return }
+        if (dy !== 0) {
+          root.settingsCursor = Math.max(0, Math.min(root.settingsItems.length - 1, root.settingsCursor + dy))
+          settingsFlick.revealCursor()
+        } else {
+          root.adjustSetting(root.settingsItems[root.settingsCursor], dx)
+        }
+      }
+      onActivateRequested: if (root.settingsCursorActive) root.activateSetting(root.settingsItems[root.settingsCursor])
+      onCloseRequested: root.settingsOpen = false
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(key) { if (key === "b" || key === "B") root.backFromSettings() }
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Backspace) { root.backFromSettings(); event.accepted = true }
+      }
+
+      Flickable {
+        id: settingsFlick
+        anchors.fill: parent
+        contentHeight: settingsColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        function revealCursor() {
+          var row = settingsRepeater.itemAt(root.settingsRows.indexOf(root.settingsItems[root.settingsCursor]))
+          if (!row) return
+          var y = row.mapToItem(settingsColumn, 0, 0).y
+          if (y < contentY) contentY = y
+          else if (y + row.height > contentY + height) contentY = y + row.height - height
+        }
+
+        Column {
+          id: settingsColumn
+          width: settingsFlick.width
+          spacing: Style.space(6)
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\u{F0141}"
+              tooltipText: "Back (B)"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.backFromSettings()
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "Site Block Settings"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+          }
+
+          Repeater {
+            id: settingsRepeater
+            model: root.settingsRows
+
+            Loader {
+              id: settingLoader
+              required property var modelData
+              width: settingsColumn.width
+              sourceComponent: modelData.section ? sectionHeading : settingRow
+
+              Component {
+                id: sectionHeading
+                PanelSectionHeader {
+                  width: settingsColumn.width
+                  topPadding: Style.space(10)
+                  text: settingLoader.modelData.section.toUpperCase()
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+              }
+
+              Component {
+                id: settingRow
+                SettingRow {
+                  width: settingsColumn.width
+                  item: settingLoader.modelData
+                  cursorIndex: root.settingsItems.indexOf(settingLoader.modelData)
+                }
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            topPadding: Style.space(8)
+            textFormat: Text.PlainText
+            text: "Up/Down to move  ·  Enter toggles  ·  Left/Right adjusts  ·  B back"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
         }
       }
     }
@@ -978,7 +1257,7 @@ Panel {
 
           Row {
             id: passageControls
-            visible: root.passages.length > 1
+            visible: root.cfg("allowSwitching") && root.passages.length > 1
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
@@ -1138,7 +1417,7 @@ Panel {
             readonly property int wordsDone: phraseField.progress === 0 ? 0 : root.confirmPhrase.slice(0, phraseField.progress).trim().split(" ").length
             readonly property int wordsTotal: root.confirmPhrase.split(" ").length
             text: phraseField.onTrack
-              ? wordsDone + " of " + wordsTotal + " words" + (phraseField.startedAt > 0 ? "  ·  " + phraseField.wpm + " wpm" : "")
+              ? wordsDone + " of " + wordsTotal + " words" + (root.cfg("showWpm") && phraseField.startedAt > 0 ? "  ·  " + phraseField.wpm + " wpm" : "")
               : "Typo -- fix it to keep going"
             color: phraseField.onTrack ? card.faint : root.urgent
             font.family: root.fontFamily
@@ -1264,8 +1543,9 @@ Panel {
               width: parent.width
               textFormat: Text.PlainText
               text: root.reasonMissing
-                ? "Answer this first -- a few words -- to unblock."
-                : "Saved with this attempt whatever you decide, so you can look back at your reasons later: site-block-db reasons"
+                ? "Answer this first -- at least " + root.cfg("reasonWords") + (root.cfg("reasonWords") === 1 ? " word" : " words") + " -- to unblock."
+                : (root.cfg("reasonWords") > 0 ? "" : "Optional. ")
+                  + "Saved with this attempt whatever you decide, so you can look back at your reasons later: site-block-db reasons"
               color: root.reasonMissing ? root.urgent : card.faint
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -1340,7 +1620,7 @@ Panel {
                 }
 
                 Button {
-                  text: "Yes, unblock"
+                  text: root.coolOffLeft > 0 ? "Yes, unblock (" + root.coolOffLeft + "s)" : "Yes, unblock"
                   bordered: true
                   hasCursor: askKeys.activeFocus && askKeys.yesSelected
                   foreground: card.text
@@ -1360,6 +1640,138 @@ Panel {
                 font.pixelSize: Style.font.caption
               }
             }
+          }
+        }
+      }
+    }
+  }
+
+  // One row of the settings popover: label and description, and a switch,
+  // a stepper, or a run glyph on the right.
+  component SettingRow: CursorSurface {
+    id: settingRowItem
+    property var item: ({})
+    property int cursorIndex: 0
+    readonly property var value: item.key ? root.cfg(item.key) : null
+
+    hasCursor: root.settingsCursorActive && root.settingsCursor === cursorIndex
+    foreground: root.foreground
+    implicitHeight: settingContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: settingRowItem.item.type === "int" ? Qt.ArrowCursor : Qt.PointingHandCursor
+      onEntered: {
+        root.settingsCursorActive = true
+        root.settingsCursor = settingRowItem.cursorIndex
+      }
+      onClicked: root.activateSetting(settingRowItem.item)
+    }
+
+    Row {
+      id: settingContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      spacing: Style.space(10)
+
+      Column {
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width - control.width - parent.spacing
+        spacing: Style.spacing.xs
+
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          text: settingRowItem.item.label || ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: true
+          elide: Text.ElideRight
+        }
+
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          text: root.settingDescription(settingRowItem.item)
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+      }
+
+      Item {
+        id: control
+        anchors.verticalCenter: parent.verticalCenter
+        width: settingRowItem.item.type === "bool" ? toggle.width
+          : settingRowItem.item.type === "int" ? stepper.width : runGlyph.width
+        height: Math.max(toggle.height, stepper.height, runGlyph.height)
+
+        ToggleSwitch {
+          id: toggle
+          visible: settingRowItem.item.type === "bool"
+          anchors.verticalCenter: parent.verticalCenter
+          checked: settingRowItem.value === true
+          interactive: false
+          foreground: root.foreground
+        }
+
+        Row {
+          id: stepper
+          visible: settingRowItem.item.type === "int"
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(4)
+
+          PanelActionButton {
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "\u{F0374}"
+            enabled: settingRowItem.value > settingRowItem.item.min
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.adjustSetting(settingRowItem.item, -1)
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(64)
+            horizontalAlignment: Text.AlignHCenter
+            textFormat: Text.PlainText
+            text: settingRowItem.value + (settingRowItem.item.unit || "")
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          PanelActionButton {
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "\u{F0415}"
+            enabled: settingRowItem.value < settingRowItem.item.max
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.adjustSetting(settingRowItem.item, 1)
+          }
+        }
+
+        Text {
+          id: runGlyph
+          visible: settingRowItem.item.type === "action"
+          anchors.verticalCenter: parent.verticalCenter
+          text: "\u{F0450}"
+          color: fetchProc.running ? root.dim : root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.heading
+
+          RotationAnimator on rotation {
+            running: fetchProc.running && runGlyph.visible
+            from: 0
+            to: 360
+            duration: 1200
+            loops: Animation.Infinite
           }
         }
       }
@@ -1573,8 +1985,8 @@ Panel {
         checked: siteRow.blocked
         busy: siteRow.pending
         interactive: false
-        foreground: root.allBlocked ? root.green : root.foreground
-        accent: root.allBlocked ? root.green : Color.accent
+        foreground: root.allBlocked && root.cfg("greenWhenBlocked") ? root.green : root.foreground
+        accent: root.allBlocked && root.cfg("greenWhenBlocked") ? root.green : Color.accent
       }
     }
   }

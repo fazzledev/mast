@@ -31,6 +31,7 @@
 #
 #   fetch-passages.rb            refresh if the pool is older than a week
 #   fetch-passages.rb --force    refresh now
+#   fetch-passages.rb --no-rank  keep keyword picks, without asking claude
 
 require "fileutils"
 require "json"
@@ -384,10 +385,11 @@ def main
   end
 
   scores = begin
+    raise "turned off" if ARGV.include?("--no-rank")
     rank(candidates)
   rescue StandardError => e
     warn "ranking: #{e.message}"
-    return 1 unless previous.empty?
+    return 1 unless previous.empty? || ARGV.include?("--no-rank")
     # Nothing to fall back on: keyword picks beat an empty pool.
     Array.new(candidates.length, KEEP_SCORE)
   end
