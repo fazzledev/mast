@@ -7,6 +7,13 @@ require_relative "shell_helper"
 # now, so nothing here is written down: the colours are compared with the
 # widget's own, and the rows with what the helper reports.
 class PanelTest < ShellTest::TestCase
+  # Without the root helper there are no sites and so no rows; that state has
+  # its own tests in fresh_install_test.rb.
+  def setup
+    super
+    skip "the root helper is not installed" if helper_status.empty?
+  end
+
   def panel
     wait("the panel's rows") do
       p = JSON.parse(ipc("panel"))

@@ -35,7 +35,9 @@ class HistoryTest < ShellTest::TestCase
   def test_an_attempt_row_says_when_what_and_why
     record_an_attempt
     row = history_rows["attempts"].first
-    assert_match(/YouTube/, row)
+    # The helper supplies the label ("YouTube"); without it the site is only
+    # ever its name, and these tests run either way.
+    assert_match(/youtube/i, row)
     assert_match(/Kept blocked/, row)
     assert_match(/Why: checking one thing only/, row)
     assert_match(/\d+ wpm/, row)

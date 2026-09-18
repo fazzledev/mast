@@ -57,6 +57,7 @@ class FreshInstallTest < ShellTest::TestCase
   end
 
   def test_the_helper_coming_back_restores_the_rows
+    skip "the root helper is not installed" if helper_status.empty?
     with_no_helper
     ipc("helper", "real")
     wait("the sites to come back") { state["helperMissing"] ? nil : true }
