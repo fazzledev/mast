@@ -134,8 +134,10 @@ if [[ $# -eq 0 && $asked != no ]] && { [[ $asked == yes ]] || [[ -t 0 ]]; } &&
   # The hint goes in gum's own header: anything echoed before it is wiped by
   # the picker taking over the screen, so nobody ever reads it.
   say "Which sites should Mast block?"
-  chosen=$(gum choose --no-limit --height 12 \
-    --header "space or x picks · a picks all · enter confirms · esc picks none" \
+  # gum 2.0 toggles with x, not space, and shows its own keybinds with
+  # --show-help; the header says it too, since that is what people read.
+  chosen=$(gum choose --no-limit --height 12 --show-help \
+    --header "x picks · a picks all · up/down moves · enter confirms · esc picks none" \
     --cursor "> " --selected-prefix "[x] " --unselected-prefix "[ ] " \
     $("$BIN" status | cut -f1) || true)
   for site in $chosen; do
