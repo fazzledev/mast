@@ -69,7 +69,15 @@ Panel {
   moduleName: "fazzledev.mast"
   ipcTarget: "fazzledev.mast"
 
-  readonly property string helper: "/usr/local/bin/mast"
+  property string helper: "/usr/local/bin/mast"
+  // Set when the helper is not there at all (exit 127), rather than
+  // there and failing: the widget then offers the install line
+  // instead of hiding, which left a fresh install looking like
+  // nothing had been added.
+  property bool helperMissing: false
+  // Where system/install.sh is, for that line.
+  readonly property string installCommand:
+    "sudo bash " + String(Qt.resolvedUrl("system/install.sh")).replace(/^file:\/\//, "")
 
   // [{ name, label, blocked }]. Empty until the first status read; the widget
   // stays hidden until then, and for good if the helper is not installed.
@@ -164,8 +172,9 @@ Panel {
   property color green: "#4caf50"
   // A boat under sail while everything is blocked; one going down while
   // anything is not.
-  readonly property string barGlyph: allBlocked ? "󰻈" : "󱫯"
-  readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
+  readonly property string barGlyph: allBlocked && !helperMissing ? "󰻈" : "󱫯"
+  readonly property color barIconColor: helperMissing ? Qt.darker(barForeground, 1.55)
+    : allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
   // The passages to type, watched on disk, and which of them are in play.
   Passages {
@@ -178,8 +187,8 @@ Panel {
   readonly property alias passages: pool.available
   function passageKind(passage) { return pool.kind(passage) }
 
-  visible: installed
-  implicitWidth: installed ? button.implicitWidth : 0
+  visible: installed || helperMissing
+  implicitWidth: visible ? button.implicitWidth : 0
   implicitHeight: button.implicitHeight
 
   function normalise(text) {
@@ -664,7 +673,12 @@ Panel {
     // failed-to-start warning in the journal every poll.
     command: ["sh", "-c", "[ -x \"$1\" ] || exit 127; exec \"$1\" status", "sh", root.helper]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.applyStatus(text) }
-    onExited: function(exitCode) { if (exitCode !== 0) root.sites = [] }
+    onExited: function(exitCode) {
+      // 127 is the helper missing; anything else is a helper that answered
+      // badly, which no amount of installing fixes.
+      root.helperMissing = exitCode === 127
+      if (exitCode !== 0) root.sites = []
+    }
   }
 
   Process {

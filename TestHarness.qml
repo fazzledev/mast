@@ -97,6 +97,15 @@ Item {
       return widget.confirmingSite === null ? "closed" : "still open: " + (widget.reasonMissing ? "reason missing" : widget.coolOffLeft > 0 ? "yes available in " + widget.coolOffLeft + "s" : "?")
     }
 
+    // Points the widget at a helper that is not there, or back at the real
+    // one, so the fresh-install state can be tested wherever this runs.
+    function helper(path: string): string {
+      widget.testMode = true
+      widget.helper = path === "real" ? "/usr/local/bin/mast" : path
+      widget.refresh()
+      return widget.helper
+    }
+
     // What the history tab shows, once the settings screen is open on it.
     function history(): string {
       return JSON.stringify(widget.settingsView.visible ? widget.settingsView.historyTab.rows() : { tiles: [], attempts: [], passages: [] })
@@ -121,6 +130,10 @@ Item {
     function state(): string {
       return JSON.stringify({
         testMode: widget.testMode,
+        helperMissing: widget.helperMissing,
+        barVisible: widget.visible,
+        barGlyph: widget.barGlyph,
+        installCommand: widget.installCommand,
         open: widget.confirmingSite !== null,
         overlayVisible: widget.overlayView.visible,
         site: widget.confirmingSite ? widget.confirmingSite.name : null,
@@ -152,6 +165,7 @@ Item {
       testTyper.stop()
       if (widget.testMode && widget.confirmingSite !== null) widget.cancelConfirm()
       if (widget.testMode) {
+        widget.helper = "/usr/local/bin/mast"
         widget.settingsOpen = false
         widget.close()
       }

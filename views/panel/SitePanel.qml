@@ -63,7 +63,7 @@ KeyboardPanel {
             }
           }
         }
-        meta: widget.blockedCount + " of " + widget.shownSites.length + " sites blocked"
+        meta: widget.helperMissing ? "helper not installed" : widget.blockedCount + " of " + widget.shownSites.length + " sites blocked"
         foreground: widget.foreground
         fontFamily: widget.fontFamily
         iconComponent: Component {
@@ -89,12 +89,13 @@ KeyboardPanel {
       }
 
       Column {
+        visible: !widget.helperMissing
         width: parent.width
         spacing: Style.space(6)
 
         Repeater {
           id: siteRepeater
-          model: widget.shownSites
+          model: widget.helperMissing ? [] : widget.shownSites
 
           SiteRow {
 
@@ -126,6 +127,44 @@ KeyboardPanel {
             site: modelData
             rowIndex: widget.moreIndex + 1 + index
           }
+        }
+      }
+
+      // A fresh install has the widget but not the helper, which is what does
+      // the blocking. Saying so beats an empty panel.
+      Column {
+        visible: widget.helperMissing
+        width: parent.width
+        spacing: Style.space(8)
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: "Mast needs its helper before it can block anything. It edits /etc/hosts and the Chrome policy, and only root may do that."
+          color: widget.foreground
+          font.family: widget.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.WordWrap
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: widget.installCommand
+          color: widget.dim
+          font.family: widget.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WrapAnywhere
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: "Then this panel fills with your sites."
+          color: widget.dim
+          font.family: widget.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
         }
       }
 
