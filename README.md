@@ -2,6 +2,8 @@
 
 Tie yourself to the mast before the Sirens start singing.
 
+![The unblock screen: a passage to type before YouTube comes back](docs/unblock.png)
+
 Mast is an [Omarchy](https://omarchy.org) bar widget that blocks distracting
 sites -- YouTube, X, Instagram, Reddit and more -- system-wide, and makes
 unblocking one a deliberate act:
@@ -16,6 +18,14 @@ unblocking one a deliberate act:
 - **It blocks itself again.** Every unblock is temporary.
 - **See your battles.** A history of attempts, reasons, and which passages
   won.
+
+Switches in the bar:
+
+![Bar panel with three sites blocked](docs/panel.png)
+
+And a record of every attempt, with what you said and how each passage fared:
+
+![History tab: battles won this week, recent attempts with reasons, and a passage scoreboard](docs/history.png)
 
 ## Requirements
 
