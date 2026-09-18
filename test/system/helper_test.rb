@@ -256,7 +256,24 @@ class HelperTest < Minitest::Test
     assert_equal ["youtube"], blocked_sites
   end
 
+  # The last thing a person sees, so not the tab-separated status the widget
+  # parses.
+  def test_installing_ends_with_something_readable
+    out = install("youtube")
+    assert_match(/Blocked now/, out)
+    assert_match(/^  YouTube$/, out)
+    assert_match(/8 more sites are a switch away/, out)
+    refute_match(/youtube\tYouTube/, out)
+  end
+
+  def test_installing_says_so_when_nothing_is_blocked
+    out = install
+    assert_match(/Nothing is blocked yet/, out)
+    assert_match(/9 more sites are a switch away/, out)
+  end
+
   # The panel that showed the install line is still open on it.
+
   def test_installing_asks_the_shell_to_open_the_panel
     install
     assert_match(/omarchy-shell -q fazzledev\.mast open/, systemd_log)

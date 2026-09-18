@@ -148,8 +148,18 @@ x picks · a picks all · up/down moves · enter confirms · esc picks none" \
   done
 fi
 
-say "Current state"
-"$BIN" status
+# `status` is tab-separated for the widget to parse; a person gets sentences.
+blocked=$("$BIN" status | awk -F'\t' '$3 == 1 { print "  " $2 }')
+open_count=$("$BIN" status | awk -F'\t' '$3 == 0' | wc -l)
+if [[ -n $blocked ]]; then
+  say "Blocked now"
+  echo "$blocked"
+else
+  say "Nothing is blocked yet"
+fi
+echo
+echo "  $open_count more sites are a switch away in the panel."
+echo "  Unblocking one costs a typed passage, a reason, and blocks itself again after."
 
 # The panel that sent you here is still showing the line you just ran, so open
 # it on the sites instead. Opening it takes the keyboard, which is fine when it
