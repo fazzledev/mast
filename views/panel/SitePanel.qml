@@ -20,6 +20,9 @@ KeyboardPanel {
   }
 
 
+  // What the panel is saying about tabs left open, for test mode.
+  readonly property string notice: stillOpenNotice.visible ? stillOpenNotice.text : ""
+
   // The panel's rows, for test mode, and where the keys go when it opens.
   readonly property alias rows: siteRepeater
   function focusKeys() { keyCatcher.forceActiveFocus() }
@@ -139,6 +142,20 @@ KeyboardPanel {
             rowIndex: widget.moreIndex + 1 + index
           }
         }
+      }
+
+      // A page already loaded keeps working until it is reloaded, and nothing
+      // but you can reload it without taking the screen away.
+      Text {
+        id: stillOpenNotice
+        textFormat: Text.PlainText
+        visible: widget.stillOpen.length > 0
+        width: parent.width
+        text: widget.stillOpenLabels() + " is still open in a browser tab. Reload it (F5) and the block takes hold."
+        color: widget.urgent
+        font.family: widget.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
       }
 
       // A fresh install has the widget but not the helper, which is what does

@@ -48,9 +48,10 @@ import "views/unblock"
 // site again, and each row counts down to it.
 //
 // Blocking only stops new requests, so whenever a site turns blocked -- from
-// the switch or from that timer -- bin/close-open closes its web app windows
-// and reloads browser windows showing it. Otherwise a video that is already
-// playing plays on.
+// the switch or from that timer -- bin/close-open closes its web app windows.
+// A browser tab showing the site is named rather than touched, and the panel
+// says to reload it: sending it a keystroke needs its window focused, which
+// means taking the screen away from whatever you are doing.
 //
 // The site list comes from the helper's status output. Only the ones named in
 // this widget's `sites` setting get a row -- the rest sit under a collapsed
@@ -70,6 +71,16 @@ Panel {
   ipcTarget: "fazzledev.mast"
 
   property string helper: "/usr/local/bin/mast"
+  // Sites whose browser tab was still open when the block went on: blocking
+  // catches new requests only, so that tab plays on until it is reloaded.
+  property var stillOpen: []
+  function stillOpenLabels() {
+    return stillOpen.map(function(name) {
+      var site = sites.filter(function(s) { return s.name === name })[0]
+      return site ? site.label : name
+    }).join(", ")
+  }
+
   // Set when the helper is not there at all (exit 127), rather than
   // there and failing: the widget then offers the install line
   // instead of hiding, which left a fresh install looking like
@@ -646,8 +657,9 @@ Panel {
         record({ type: "relock", site: site.name, relock_at: site.relockAt })
       }
     })
-    if (closing.length > 0) {
-      Quickshell.execDetached(["bash", String(Qt.resolvedUrl("bin/close-open")).replace(/^file:\/\//, "")].concat(closing))
+    if (closing.length > 0 && !closeProc.running) {
+      closeProc.command = ["bash", String(Qt.resolvedUrl("bin/close-open")).replace(/^file:\/\//, "")].concat(closing)
+      closeProc.running = true
     }
     sites = next
     if (cursorIndex >= shownSites.length) cursorIndex = Math.max(0, shownSites.length - 1)
@@ -698,6 +710,18 @@ Panel {
     running: true
     triggeredOnStart: true
     onTriggered: root.refresh()
+  }
+
+  // bin/close-open closes a blocked site's web app windows and names the
+  // browser windows still showing it, which it deliberately leaves alone.
+  Process {
+    id: closeProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.stillOpen = String(text || "").split("\n").filter(function(s) { return s !== "" })
+      }
+    }
   }
 
   Process {

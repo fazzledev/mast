@@ -6,15 +6,12 @@
 # loaded keeps its connections, so a playing video plays on. So, in the user's
 # session:
 #   - web app windows for the site (Omarchy's chrome-<domain>__ apps) close;
-#   - browser windows whose visible tab is on the site reload, once Chrome has
-#     picked up the new policy, which lands them on the "blocked" page.
+#   - browser windows whose visible tab is on the site are named on stdout,
+#     one site per line, for the widget to tell you about. They are left
+#     alone: see the note further down.
 # Background tabs show no title to match and are left alone.
 
 set -euo pipefail
-
-# Chrome waits a few seconds after the policy directory changes before
-# reloading it; a reload before then just loads the site again.
-POLICY_SETTLE=${POLICY_SETTLE:-8}
 
 app_class() {
   case $1 in
@@ -50,7 +47,7 @@ tab_title() {
 
 dispatch() { hyprctl dispatch "$1" >/dev/null; }
 
-reload=()
+still_open=()
 clients=$(hyprctl clients -j)
 for site in "$@"; do
   class=$(app_class "$site")
@@ -61,16 +58,16 @@ for site in "$@"; do
     [[ -n $addr ]] && dispatch "hl.dsp.window.close({ window = \"address:$addr\" })"
   done < <(jq -r --arg re "$class" '.[] | select(.class | test($re)) | .address' <<<"$clients")
 
-  while read -r addr; do
-    [[ -n $addr ]] && reload+=("$addr")
-  done < <(jq -r --arg re "$title" '.[] | select(.title | test($re)) | .address' <<<"$clients")
+  # A browser window showing the site is named, not touched: this used to send
+  # it F5, which Hyprland accepts and Chrome ignores unless the window has
+  # focus, so the tab sat there playing on. Focusing it first would take the
+  # screen away from whatever you were doing, and closing the window would take
+  # every other tab with it. So the widget says the tab is still open, and you
+  # reload it.
+  if jq -e --arg re "$title" '.[] | select(.title | test($re))' <<<"$clients" >/dev/null; then
+    still_open+=("$site")
+  fi
 done
 
-(( ${#reload[@]} )) || exit 0
-sleep "$POLICY_SETTLE"
-for addr in "${reload[@]}"; do
-  # Down and up as separate dispatches: Hyprland's one-shot shortcut can leave
-  # a synthetic key stuck repeating.
-  dispatch "hl.dsp.send_key_state({ mods = \"\", key = \"F5\", state = \"down\", window = \"address:$addr\" })"
-  dispatch "hl.dsp.send_key_state({ mods = \"\", key = \"F5\", state = \"up\", window = \"address:$addr\" })"
-done
+(( ${#still_open[@]} )) && printf '%s\n' "${still_open[@]}"
+exit 0

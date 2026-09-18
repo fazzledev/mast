@@ -119,6 +119,14 @@ Item {
       return JSON.stringify(rows.length > 0 ? rows[0] : {})
     }
 
+    // A tab left open on a site that has just been blocked.
+    function stillOpen(names: string): string {
+      widget.testMode = true
+      // "none" clears it: an empty argument never reaches here.
+      widget.stillOpen = names === "none" ? [] : String(names).split(",").filter(function(n) { return n !== "" })
+      return String(widget.stillOpen.length)
+    }
+
     // The copy button on the panel a fresh install shows.
     function copyInstall(): string {
       widget.testMode = true
@@ -143,7 +151,7 @@ Item {
         rows.push({ label: row.label, state: row.stateText, icon: row.icon,
                     iconColor: String(row.iconColor), labelColor: String(row.labelColor) })
       }
-      return JSON.stringify({ opened: widget.opened, rows: rows,
+      return JSON.stringify({ opened: widget.opened, rows: rows, notice: widget.panelView.notice,
                               foreground: String(widget.foreground), dim: String(widget.dim),
                               green: String(widget.green), battles: widget.battlesText() })
     }

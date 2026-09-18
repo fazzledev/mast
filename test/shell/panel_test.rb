@@ -60,6 +60,24 @@ class PanelTest < ShellTest::TestCase
     end
   end
 
+  # Blocking catches new requests only, so a tab already open keeps working.
+  # The panel says which, since reloading it is the one thing the widget
+  # cannot do without taking the screen away.
+  def test_it_says_when_a_tab_is_still_open_on_a_blocked_site
+    ipc("stillOpen", "youtube")
+    notice = JSON.parse(ipc("panel"))["notice"]
+    assert_match(/still open in a browser tab/, notice)
+    assert_match(/YouTube|youtube/, notice)
+    assert_match(/F5/, notice)
+  ensure
+    ipc("stillOpen", "none")
+  end
+
+  def test_no_such_line_when_nothing_is_open
+    ipc("stillOpen", "none")
+    assert_equal "", JSON.parse(ipc("panel"))["notice"]
+  end
+
   def test_the_week_is_summed_up
     assert_match(/\A\d+ of \d+ unblock battles? won\z/, panel["battles"])
   end
