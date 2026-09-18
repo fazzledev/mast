@@ -9,6 +9,19 @@ Column {
   // The widget whose record this is.
   required property var widget
 
+  // What the rows show, for `omarchy-shell fazzledev.mast.test history`.
+  function rows() {
+    var read = function(repeater) {
+      var list = []
+      for (var i = 0; i < repeater.count; i++) {
+        var row = repeater.itemAt(i)
+        if (row) list.push(row.summary)
+      }
+      return list
+    }
+    return { tiles: read(tilesRepeater), attempts: read(attemptsRepeater), passages: read(passagesRepeater) }
+  }
+
   // Up and down scroll the attempts, which is the long list.
   function scroll(steps) {
     attemptsFlick.contentY = Math.max(0, Math.min(attemptsFlick.contentHeight - attemptsFlick.height,
@@ -25,6 +38,7 @@ Column {
     spacing: Style.space(16)
 
     Repeater {
+      id: tilesRepeater
       model: [
         { value: (historyTab.week.stayed || 0) + " of " + (historyTab.week.attempts || 0), label: "unblock battles won this week" },
         { value: String(historyTab.week.unblocked || 0), label: (historyTab.week.unblocked === 1 ? "unblock" : "unblocks") + " this week, " + Math.round((historyTab.week.unblocked_seconds || 0) / 60) + " min open" },
@@ -33,6 +47,7 @@ Column {
 
       BorderSurface {
         required property var modelData
+        readonly property string summary: modelData.value + " " + modelData.label
         width: (historyTiles.width - historyTiles.spacing * 2) / 3
         height: tileColumn.implicitHeight + Style.space(28)
         radius: Style.cornerRadius
@@ -110,14 +125,18 @@ Column {
           }
 
           Repeater {
+            id: attemptsRepeater
             model: widget.historyData.attempts
 
             Column {
+              id: attemptRow
               required property var modelData
+              readonly property string summary: [headline.text, why.text, factsLine.text].filter(function(t) { return t !== "" }).join(" | ")
               width: attemptsColumn.width
               spacing: Style.space(3)
 
               Text {
+                id: headline
                 width: parent.width
                 textFormat: Text.StyledText
                 text: widget.escapeHtml(Qt.formatDateTime(new Date(modelData.started_at * 1000), "ddd d MMM HH:mm")
@@ -132,6 +151,7 @@ Column {
               }
 
               Text {
+                id: why
                 visible: !!modelData.reason
                 width: parent.width
                 textFormat: Text.PlainText
@@ -143,6 +163,7 @@ Column {
               }
 
               Text {
+                id: factsLine
                 readonly property var facts: [
                   modelData.wpm ? modelData.wpm + " wpm" : "",
                   modelData.typing_seconds ? widget.formatDuration(modelData.typing_seconds) + " typing" : "",
@@ -201,11 +222,13 @@ Column {
           }
 
           Repeater {
+            id: passagesRepeater
             model: widget.historyData.passages
 
             Column {
               id: passageRow
               required property var modelData
+              readonly property string summary: [passageTitle.text, opening.text, record.text].join(" | ")
               width: passagesColumn.width
               spacing: Style.space(3)
               readonly property bool hidden: {
@@ -246,6 +269,7 @@ Column {
               }
 
               Text {
+                id: opening
                 width: parent.width
                 textFormat: Text.PlainText
                 text: "\"" + modelData.opening + "\""
@@ -256,6 +280,7 @@ Column {
               }
 
               Text {
+                id: record
                 width: parent.width
                 textFormat: Text.StyledText
                 text: "<font color='" + widget.green + "'>won " + (modelData.walked_away + modelData.kept_blocked) + "</font>"

@@ -15,6 +15,8 @@ PanelWindow {
   id: settingsWindow
   // The widget whose settings and record these are.
   required property var widget
+  // The history tab, for the test IPC.
+  readonly property alias historyTab: historyTabView
   visible: widget.settingsOpen
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"

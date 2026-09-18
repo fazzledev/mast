@@ -734,6 +734,11 @@ Panel {
       return root.confirmingSite === null ? "closed" : "still open: " + (root.reasonMissing ? "reason missing" : root.coolOffLeft > 0 ? "yes available in " + root.coolOffLeft + "s" : "?")
     }
 
+    // What the history tab shows, once the settings screen is open on it.
+    function history(): string {
+      return JSON.stringify(settingsWindow.visible ? settingsWindow.historyTab.rows() : { tiles: [], attempts: [], passages: [] })
+    }
+
     // The panel's own rows, which nothing else can see into.
     function panel(): string {
       root.testMode = true
