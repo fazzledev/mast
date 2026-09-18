@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.Commons
 import qs.Ui
 
@@ -8,6 +9,16 @@ KeyboardPanel {
   id: sitePanel
   // The widget whose sites these are.
   required property var widget
+
+  // Puts the install line on the clipboard, since it is long and nobody
+  // should have to retype it. Said so for a moment afterwards.
+  property bool copied: false
+  function copyInstallCommand() {
+    Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(widget.installCommand) + " | wl-copy"])
+    copied = true
+    copiedFor.restart()
+  }
+
 
   // The panel's rows, for test mode, and where the keys go when it opens.
   readonly property alias rows: siteRepeater
@@ -137,6 +148,12 @@ KeyboardPanel {
         width: parent.width
         spacing: Style.space(8)
 
+        Timer {
+          id: copiedFor
+          interval: 2500
+          onTriggered: sitePanel.copied = false
+        }
+
         Text {
           textFormat: Text.PlainText
           width: parent.width
@@ -147,14 +164,34 @@ KeyboardPanel {
           wrapMode: Text.WordWrap
         }
 
-        Text {
-          textFormat: Text.PlainText
+        Item {
           width: parent.width
-          text: widget.installCommand
-          color: widget.dim
-          font.family: widget.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WrapAnywhere
+          height: Math.max(installLine.implicitHeight, copyButton.height)
+
+          Text {
+            id: installLine
+            anchors.left: parent.left
+            anchors.right: copyButton.left
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: sitePanel.copied ? "Copied. Paste it into a terminal." : widget.installCommand
+            color: sitePanel.copied ? widget.foreground : widget.dim
+            font.family: widget.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WrapAnywhere
+          }
+
+          PanelActionButton {
+            id: copyButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: sitePanel.copied ? "\u{F012C}" : "\u{F018F}"
+            tooltipText: "Copy the install command"
+            foreground: widget.foreground
+            fontFamily: widget.fontFamily
+            onClicked: sitePanel.copyInstallCommand()
+          }
         }
 
         Text {

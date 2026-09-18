@@ -260,6 +260,7 @@ Panel {
   readonly property alias overlayView: overlay
   readonly property alias settingsView: settingsWindow
   readonly property alias siteRows: panel.rows
+  readonly property alias panelView: panel
 
   // The record: every event goes through here, and the numbers come back.
   Recorder {

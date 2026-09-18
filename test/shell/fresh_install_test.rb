@@ -27,7 +27,20 @@ class FreshInstallTest < ShellTest::TestCase
     assert_match %r{\Asudo bash /.*/system/install\.sh\z}, s["installCommand"]
   end
 
+  def test_the_install_command_can_be_copied
+    s = with_no_helper
+    copied = ipc("copyInstall")
+    assert_equal s["installCommand"], copied
+    # wl-copy runs detached, so give the clipboard a moment.
+    pasted = wait("the clipboard") do
+      text = `wl-paste --no-newline 2>/dev/null`
+      text == copied ? text : nil
+    end
+    assert_equal copied, pasted
+  end
+
   def test_the_helper_coming_back_restores_the_rows
+
     with_no_helper
     wait("the sites to come back") { state["helperMissing"] ? nil : true }
     refute_empty JSON.parse(ipc("panel"))["rows"]

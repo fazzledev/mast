@@ -106,6 +106,14 @@ Item {
       return widget.helper
     }
 
+    // The copy button on the panel a fresh install shows.
+    function copyInstall(): string {
+      widget.testMode = true
+      widget.open()
+      widget.panelView.copyInstallCommand()
+      return widget.installCommand
+    }
+
     // What the history tab shows, once the settings screen is open on it.
     function history(): string {
       return JSON.stringify(widget.settingsView.visible ? widget.settingsView.historyTab.rows() : { tiles: [], attempts: [], passages: [] })
