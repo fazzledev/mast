@@ -76,6 +76,20 @@ CursorSurface {
         font.pixelSize: Style.font.caption
         wrapMode: Text.WordWrap
       }
+
+      // The command itself, so it can be read -- and retyped -- without
+      // taking the copy button's word for what it is.
+      Text {
+        visible: settingRowItem.item.type === "copy"
+        width: parent.width
+        topPadding: Style.space(4)
+        textFormat: Text.PlainText
+        text: settingRowItem.item.command || ""
+        color: settingRowItem.copied ? widget.foreground : widget.dim
+        font.family: widget.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WrapAnywhere
+      }
     }
 
     Item {
