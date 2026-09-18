@@ -680,7 +680,10 @@ Panel {
   }
 
   Timer {
-    interval: 15000
+    // Quicker while the helper is missing, so the panel that told you to
+    // install it fills with your sites a second or two after it lands --
+    // rather than opening itself over whatever you are typing.
+    interval: root.helperMissing ? 2000 : 15000
     repeat: true
     running: true
     triggeredOnStart: true
