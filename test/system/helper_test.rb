@@ -222,4 +222,35 @@ class HelperTest < Minitest::Test
     assert_equal ["youtube"], blocked_sites
     refute_match(/systemd-run/, systemd_log)
   end
+
+  # -------------------------------------------------------------- uninstall
+
+  def uninstall
+    script = File.expand_path("../../system/uninstall.sh", __dir__)
+    env = { "MAST_PREFIX" => @prefix, "MAST_BIN" => HELPER, "PATH" => "#{@bin}:#{ENV["PATH"]}" }
+    out = IO.popen(env, ["bash", script], err: [:child, :out], &:read)
+    assert $?.success?, "uninstall failed: #{out}"
+    out
+  end
+
+  def test_uninstalling_lifts_every_block_and_removes_the_helper
+    FileUtils.mkdir_p(File.dirname(File.join(@prefix, "usr", "local", "bin")))
+    FileUtils.mkdir_p(File.join(@prefix, "usr", "local", "bin"))
+    FileUtils.cp(HELPER, File.join(@prefix, "usr", "local", "bin", "mast"))
+    run!("on", "all")
+    uninstall
+    assert_equal ORIGINAL_HOSTS, hosts
+    refute File.exist?(policy_path)
+    refute File.exist?(File.join(@prefix, "usr", "local", "bin", "mast"))
+    refute File.exist?(File.join(@prefix, "var", "lib", "mast"))
+  end
+
+  # The widget stays on the bar and offers to put the helper back, so the
+  # script must not claim otherwise.
+  def test_uninstalling_says_what_is_left_behind
+    out = uninstall
+    assert_match(/nothing is blocked/, out)
+    assert_match(/bar widget stays/, out)
+    refute_match(/hides itself/, out)
+  end
 end

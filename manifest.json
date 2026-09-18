@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Mast",
-    "description": "Per-site block switches. Unblocking means typing out a convincing passage and saying why, and the site blocks itself again after a while. Tracks every attempt. Hides itself when the helper is not installed.",
+    "description": "Per-site block switches. Unblocking means typing out a convincing passage and saying why, and the site blocks itself again after a while. Tracks every attempt. Shows how to install its root helper until you have.",
     "category": "System",
     "allowMultiple": false,
     "defaults": {
