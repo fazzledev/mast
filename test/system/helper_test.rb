@@ -30,7 +30,9 @@ class HelperTest < Minitest::Test
   def fake_systemd
     @bin = File.join(@prefix, "fakebin")
     FileUtils.mkdir_p(@bin)
-    %w[systemctl systemd-run resolvectl].each do |name|
+    # runuser needs root; under test the install's last step just says what it
+    # would have asked the shell to do.
+    %w[systemctl systemd-run resolvectl omarchy-shell runuser].each do |name|
       path = File.join(@bin, name)
       File.write(path, "#!/bin/sh\necho \"#{name} $*\" >>\"$MAST_PREFIX/systemd.log\"\nexit 0\n")
       FileUtils.chmod(0o755, path)
@@ -223,25 +225,66 @@ class HelperTest < Minitest::Test
     refute_match(/systemd-run/, systemd_log)
   end
 
+  # ---------------------------------------------------------------- install
+
+  def test_installing_puts_the_helper_the_rule_and_the_boot_service_in_place
+    install
+    assert File.executable?(installed_bin), "the helper is copied, not symlinked into the plugin"
+    assert_match(/polkit.addRule/, File.read(rule_path))
+    assert_match(/mast on \[a-z\]\+/, File.read(rule_path), "only `mast on <site>` skips the prompt")
+    assert_match(/#{Regexp.escape(ENV["USER"])}/, File.read(rule_path), "for this user at the seat")
+    assert_match(%r{ExecStart=/usr/local/bin/mast restore}, File.read(unit_path))
+    assert_match(/systemctl enable mast-restore\.service/, systemd_log)
+  end
+
+  def test_installing_blocks_the_sites_it_is_given_and_nothing_else
+    install("youtube")
+    assert_equal ["youtube"], blocked_sites
+  end
+
+  def test_installing_twice_leaves_the_blocks_as_they_are
+    install("youtube")
+    once = hosts
+    install
+    assert_equal once, hosts
+    assert_equal ["youtube"], blocked_sites
+  end
+
+  # The panel that showed the install line is still open on it.
+  def test_installing_asks_the_shell_to_open_the_panel
+    install
+    assert_match(/omarchy-shell -q fazzledev\.mast open/, systemd_log)
+  end
+
   # -------------------------------------------------------------- uninstall
 
   def uninstall
-    script = File.expand_path("../../system/uninstall.sh", __dir__)
-    env = { "MAST_PREFIX" => @prefix, "MAST_BIN" => HELPER, "PATH" => "#{@bin}:#{ENV["PATH"]}" }
-    out = IO.popen(env, ["bash", script], err: [:child, :out], &:read)
-    assert $?.success?, "uninstall failed: #{out}"
+    script(File.expand_path("../../system/uninstall.sh", __dir__))
+  end
+
+  def install(*sites)
+    script(File.expand_path("../../system/install.sh", __dir__), *sites)
+  end
+
+  def script(path, *args)
+    env = { "MAST_PREFIX" => @prefix, "MAST_BIN" => HELPER, "PATH" => "#{@bin}:#{ENV["PATH"]}",
+            "SUDO_USER" => ENV["USER"] }
+    out = IO.popen(env, ["bash", path, *args], err: [:child, :out], &:read)
+    assert $?.success?, "#{File.basename(path)} failed: #{out}"
     out
   end
 
+  def installed_bin = File.join(@prefix, "usr", "local", "bin", "mast")
+  def rule_path = File.join(@prefix, "etc", "polkit-1", "rules.d", "50-mast.rules")
+  def unit_path = File.join(@prefix, "etc", "systemd", "system", "mast-restore.service")
+
   def test_uninstalling_lifts_every_block_and_removes_the_helper
-    FileUtils.mkdir_p(File.dirname(File.join(@prefix, "usr", "local", "bin")))
-    FileUtils.mkdir_p(File.join(@prefix, "usr", "local", "bin"))
-    FileUtils.cp(HELPER, File.join(@prefix, "usr", "local", "bin", "mast"))
+    install
     run!("on", "all")
     uninstall
     assert_equal ORIGINAL_HOSTS, hosts
     refute File.exist?(policy_path)
-    refute File.exist?(File.join(@prefix, "usr", "local", "bin", "mast"))
+    refute File.exist?(installed_bin)
     refute File.exist?(File.join(@prefix, "var", "lib", "mast"))
   end
 

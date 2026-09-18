@@ -7,23 +7,26 @@
 set -euo pipefail
 
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-BIN=/usr/local/bin/mast
-RULE=/etc/polkit-1/rules.d/50-mast.rules
-UNIT=/etc/systemd/system/mast-restore.service
+# Everything hangs off MAST_PREFIX, which is empty in an install and a
+# temporary directory under test (see test/system).
+PREFIX=${MAST_PREFIX:-}
+BIN=$PREFIX/usr/local/bin/mast
+RULE=$PREFIX/etc/polkit-1/rules.d/50-mast.rules
+UNIT=$PREFIX/etc/systemd/system/mast-restore.service
 TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || echo "")}
 
-[[ $EUID -eq 0 ]] || { echo "run me with sudo" >&2; exit 1; }
+[[ $EUID -eq 0 || -n $PREFIX ]] || { echo "run me with sudo" >&2; exit 1; }
 [[ -n $TARGET_USER ]] || { echo "could not determine the target user" >&2; exit 1; }
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # This used to be YouTube-only, as block-youtube. Clear that out so the two
 # cannot leave overlapping hosts entries or conflicting policies behind.
-if [[ -e /usr/local/bin/block-youtube ]] || grep -qxF '# >>> block-youtube >>>' /etc/hosts; then
+if [[ -e $PREFIX/usr/local/bin/block-youtube ]] || grep -qxF '# >>> block-youtube >>>' "$PREFIX/etc/hosts"; then
   say "Removing the old block-youtube install"
-  sed -i '/^# >>> block-youtube >>>$/,/^# <<< block-youtube <<<$/d' /etc/hosts
-  rm -f /etc/chromium/policies/managed/block-youtube.json
-  rm -f /etc/opt/chrome/policies/managed/block-youtube.json
-  rm -f /usr/local/bin/block-youtube
+  sed -i '/^# >>> block-youtube >>>$/,/^# <<< block-youtube <<<$/d' "$PREFIX/etc/hosts"
+  rm -f "$PREFIX/etc/chromium/policies/managed/block-youtube.json"
+  rm -f "$PREFIX/etc/opt/chrome/policies/managed/block-youtube.json"
+  rm -f "$PREFIX/usr/local/bin/block-youtube"
 fi
 
 # Before Mast had its name, the helper was site-block. Note what it was doing
@@ -33,28 +36,33 @@ fi
 # once installed, below.
 was_blocked=()
 was_relocking=()
-if [[ -e /usr/local/bin/site-block ]] || grep -q '^# >>> site-block:' /etc/hosts; then
+if [[ -e $PREFIX/usr/local/bin/site-block ]] || grep -q '^# >>> site-block:' "$PREFIX/etc/hosts"; then
   say "Moving the site-block install over to mast"
-  mapfile -t was_blocked < <(sed -n 's/^# >>> site-block:\([a-z]*\) >>>$/\1/p' /etc/hosts)
+  mapfile -t was_blocked < <(sed -n 's/^# >>> site-block:\([a-z]*\) >>>$/\1/p' "$PREFIX/etc/hosts")
   now=$(date +%s)
-  for f in /var/lib/site-block/*.until; do
+  for f in "$PREFIX"/var/lib/site-block/*.until; do
     [[ -r $f ]] || continue
     was_relocking+=("$(basename "$f" .until):$(( $(cat "$f") - now ))")
   done
   for unit in $(systemctl list-units --all --plain --no-legend 'site-block-relock-*' | awk '{print $1}'); do
     systemctl stop "$unit" 2>/dev/null || true
   done
-  sed -i '/^# >>> site-block:[a-z]* >>>$/,/^# <<< site-block:[a-z]* <<<$/d' /etc/hosts
-  rm -f /etc/chromium/policies/managed/site-block.json /etc/opt/chrome/policies/managed/site-block.json
-  rm -rf /var/lib/site-block
+  sed -i '/^# >>> site-block:[a-z]* >>>$/,/^# <<< site-block:[a-z]* <<<$/d' "$PREFIX/etc/hosts"
+  rm -f "$PREFIX/etc/chromium/policies/managed/site-block.json" "$PREFIX/etc/opt/chrome/policies/managed/site-block.json"
+  rm -rf "$PREFIX/var/lib/site-block"
   systemctl disable site-block-restore.service 2>/dev/null || true
-  rm -f /etc/systemd/system/site-block-restore.service /etc/polkit-1/rules.d/50-site-block.rules /usr/local/bin/site-block
+  rm -f "$PREFIX/etc/systemd/system/site-block-restore.service" "$PREFIX/etc/polkit-1/rules.d/50-site-block.rules" "$PREFIX/usr/local/bin/site-block"
 fi
 
 # Copied, not symlinked: the bar runs this as root through pkexec, so it must
 # be root-owned and out of reach of this user-writable repo. Re-run after edits.
 say "Installing $BIN"
-install -o root -g root -m 0755 "$SRC_DIR/mast" "$BIN"
+install -d -m 0755 "$(dirname "$BIN")"
+if [[ -n $PREFIX ]]; then
+  install -m 0755 "$SRC_DIR/mast" "$BIN"
+else
+  install -o root -g root -m 0755 "$SRC_DIR/mast" "$BIN"
+fi
 
 # Blocking should be free; only unblocking should cost a prompt. pkexec passes
 # the full command line to polkit, so this lets exactly `mast on <name>`
@@ -62,6 +70,7 @@ install -o root -g root -m 0755 "$SRC_DIR/mast" "$BIN"
 # not know, so the pattern does not need to track the site list. `off` still
 # falls through to polkit's default and asks for auth.
 say "Installing $RULE for $TARGET_USER"
+install -d -m 0755 "$(dirname "$RULE")"
 cat >"$RULE" <<RULEFILE
 // Installed by Mast's system/install.sh
 polkit.addRule(function(action, subject) {
@@ -77,6 +86,7 @@ chmod 0644 "$RULE"
 
 # Relock timers are transient and die with a reboot; this puts them back.
 say "Installing $UNIT"
+install -d -m 0755 "$(dirname "$UNIT")"
 cat >"$UNIT" <<'UNITFILE'
 [Unit]
 Description=Re-arm or apply Mast relocks after boot
@@ -114,3 +124,15 @@ done
 
 say "Current state"
 "$BIN" status
+
+# The panel that sent you here is still showing the line you just ran, so open
+# it on the sites instead. Opening it takes the keyboard, which is fine when it
+# is the last thing your own command does -- the widget never does it by
+# itself. sudo strips the session, so hand the shell back what it needs to find
+# it. Best effort: no shell, no widget, no harm.
+if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
+  runuser -u "$TARGET_USER" -- env \
+    XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
+    OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}" \
+    omarchy-shell -q fazzledev.mast open >/dev/null 2>&1 || true
+fi
