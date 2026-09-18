@@ -2,9 +2,6 @@ Mast ships text it did not write. The MIT licence in LICENSE covers the
 code; each passage is under its own terms, and config/passages.json carries
 them per passage.
 
-The passages Mast ships with are not covered by the licence above; each is
-under its own terms, and config/passages.json carries them per passage:
-
   config/paragraphs.txt   written for Mast, MIT with the rest.
 
   Books                   excerpts from public domain texts on Project
