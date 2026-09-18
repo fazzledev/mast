@@ -245,12 +245,12 @@ Panel {
 
   // Test mode (see the `fazzledev.mast.test` IPC target below) runs in the
   // test environment, which keeps its attempts in a database of their own.
-property bool testMode: false
+  property bool testMode: false
 
-// What test mode reaches into; see TestHarness.qml.
-readonly property alias overlayView: overlay
-readonly property alias settingsView: settingsWindow
-readonly property alias siteRows: siteRepeater
+  // What test mode reaches into; see TestHarness.qml.
+  readonly property alias overlayView: overlay
+  readonly property alias settingsView: settingsWindow
+  readonly property alias siteRows: panel.rows
 
   // The record: every event goes through here, and the numbers come back.
   Recorder {
@@ -619,7 +619,7 @@ readonly property alias siteRows: siteRepeater
     moreExpanded = false
     refresh()
     refreshStats()
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    Qt.callLater(function() { panel.focusKeys() })
   }
 
   // Test mode, for checking the widget end to end without a real unblock,
@@ -709,141 +709,14 @@ readonly property alias siteRows: siteRepeater
     }
   }
 
-  KeyboardPanel {
-    id: panel
-    anchorItem: button
-    owner: root
-    bar: root.bar
-    open: root.opened
-    focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(320))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(760))
-
-    PanelKeyCatcher {
-      id: keyCatcher
-      anchors.fill: parent
-      onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        root.cursorIndex = Math.max(0, Math.min(root.cursorCount - 1, root.cursorIndex + dy))
-      }
-      onActivateRequested: if (root.cursorActive) root.activate(root.cursorIndex)
-      onDeleteRequested: if (root.cursorActive && root.cursorIndex < root.shownSites.length) root.removeSite(root.shownSites[root.cursorIndex])
-      onCloseRequested: root.close()
-      onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(key) { if (key === "s" || key === "S") root.openSettings("settings") }
-
-      Column {
-        id: column
-        width: parent.width
-        spacing: Style.space(12)
-
-        PanelHero {
-          id: siteBlockHero
-          width: parent.width
-          title: "Mast"
-          // Inside the hero's own components `root` is the hero, so they
-          // reach this panel through the hero's id.
-          readonly property var panelRoot: root
-          trailingControl: Component {
-            Row {
-              spacing: Style.space(2)
-
-              PanelActionButton {
-                iconText: "\u{F02DA}"
-                tooltipText: "History"
-                foreground: siteBlockHero.foreground
-                fontFamily: siteBlockHero.fontFamily
-                onClicked: siteBlockHero.panelRoot.openSettings("history")
-              }
-
-              PanelActionButton {
-                iconText: "\u{F0493}"
-                tooltipText: "Settings (S)"
-                foreground: siteBlockHero.foreground
-                fontFamily: siteBlockHero.fontFamily
-                onClicked: siteBlockHero.panelRoot.openSettings("settings")
-              }
-            }
-          }
-          meta: root.blockedCount + " of " + root.shownSites.length + " sites blocked"
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-          iconComponent: Component {
-            Text {
-              text: root.barGlyph
-              color: root.barIconColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.display
-            }
-          }
-        }
-
-        Text {
-          visible: text !== ""
-          width: parent.width
-          textFormat: Text.PlainText
-          text: root.cfg("showWeekStats") && root.stats.week && root.stats.week.attempts > 0
-            ? root.battlesText() + " this week" : ""
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.body
-          wrapMode: Text.WordWrap
-        }
-
-        Column {
-          width: parent.width
-          spacing: Style.space(6)
-
-          Repeater {
-            id: siteRepeater
-            model: root.shownSites
-
-            SiteRow {
-
-              widget: root
-              required property var modelData
-              required property int index
-              width: parent.width
-              site: modelData
-              rowIndex: index
-            }
-          }
-
-          MoreRow {
-
-            widget: root
-            visible: root.hiddenSites.length > 0
-            width: parent.width
-          }
-
-          Repeater {
-            model: root.moreExpanded ? root.hiddenSites : []
-
-            HiddenSiteRow {
-
-              widget: root
-              required property var modelData
-              required property int index
-              width: parent.width
-              site: modelData
-              rowIndex: root.moreIndex + 1 + index
-            }
-          }
-        }
-
-        Text {
-          textFormat: Text.PlainText
-          visible: root.lastError !== ""
-          width: parent.width
-          text: root.lastError
-          color: root.urgent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          wrapMode: Text.WordWrap
-        }
-      }
-    }
-  }
+SitePanel {
+  id: panel
+  widget: root
+  anchorItem: button
+  owner: root
+  bar: root.bar
+  open: root.opened
+}
 
   // ------------------------------------------------------ settings and history
   // `omarchy-shell fazzledev.mast.settings open` (or `history`), for a
