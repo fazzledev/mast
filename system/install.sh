@@ -1,8 +1,9 @@
 #!/bin/bash
 # Installs Mast's site block and the root helper the bar toggles it with:
 #   sudo bash system/install.sh [SITE...]
-# Idempotent, and leaves existing blocks as they are; name sites to block
-# them as well (e.g. `youtube twitter`). See uninstall.sh to undo.
+# Idempotent, and leaves existing blocks as they are. Name sites to block them
+# (e.g. `youtube twitter`); with none named, and nothing blocked yet, it asks.
+# See uninstall.sh to undo.
 
 set -euo pipefail
 
@@ -121,6 +122,22 @@ for site in "$@"; do
   say "Blocking $site"
   "$BIN" on "$site"
 done
+
+# A fresh install blocks nothing, and the widget's default switches -- YouTube
+# and X -- are a guess at what anyone wants. Ask once, here, where the answer
+# can be acted on straight away. Skipped when sites were named as arguments,
+# when something is blocked already (so a re-run does not nag), and when there
+# is nobody to ask. MAST_ASK=yes forces it, for the tests.
+asked=${MAST_ASK:-auto}
+if [[ $# -eq 0 && $asked != no ]] && { [[ $asked == yes ]] || [[ -t 0 ]]; } &&
+   command -v gum >/dev/null && [[ -z $("$BIN" status | awk -F'\t' '$3 == 1 { print $1 }') ]]; then
+  say "Which sites should Mast block?"
+  echo "Space picks, Enter confirms. None is fine -- the switches are in the bar either way."
+  chosen=$(gum choose --no-limit --height 12 $("$BIN" status | cut -f1) || true)
+  for site in $chosen; do
+    "$BIN" on "$site"
+  done
+fi
 
 say "Current state"
 "$BIN" status

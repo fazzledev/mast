@@ -42,6 +42,12 @@ class HelperTest < Minitest::Test
   def systemd_log = File.exist?(log_path) ? File.read(log_path) : ""
   def log_path = File.join(@prefix, "systemd.log")
 
+  # The install asks which sites to block with `gum choose`; this answers.
+  def fake_gum(*choices)
+    File.write(File.join(@bin, "gum"), "#!/bin/sh\necho \"#{choices.join("\n")}\"\nexit 0\n")
+    FileUtils.chmod(0o755, File.join(@bin, "gum"))
+  end
+
   # ------------------------------------------------------------ the helper
 
   def mast(*args)
@@ -256,19 +262,49 @@ class HelperTest < Minitest::Test
     assert_match(/omarchy-shell -q fazzledev\.mast open/, systemd_log)
   end
 
+  # Rather than assuming the two the widget ships switches for.
+  def test_installing_asks_which_sites_to_block
+    fake_gum("reddit", "twitch")
+    out = install(ask: "yes")
+    assert_match(/Which sites should Mast block\?/, out)
+    assert_equal %w[reddit twitch], blocked_sites
+  end
+
+  def test_picking_nothing_blocks_nothing
+    fake_gum("")
+    install(ask: "yes")
+    assert_equal [], blocked_sites
+  end
+
+  def test_it_does_not_ask_again_once_something_is_blocked
+    fake_gum("reddit")
+    install(ask: "yes")
+    fake_gum("twitch")
+    out = install(ask: "yes")
+    refute_match(/Which sites/, out)
+    assert_equal ["reddit"], blocked_sites, "a re-run leaves the blocks as they are"
+  end
+
+  def test_sites_named_as_arguments_are_taken_instead_of_asking
+    fake_gum("reddit")
+    out = install("youtube", ask: "yes")
+    refute_match(/Which sites/, out)
+    assert_equal ["youtube"], blocked_sites
+  end
+
   # -------------------------------------------------------------- uninstall
 
   def uninstall
     script(File.expand_path("../../system/uninstall.sh", __dir__))
   end
 
-  def install(*sites)
-    script(File.expand_path("../../system/install.sh", __dir__), *sites)
+  def install(*sites, ask: "no")
+    script(File.expand_path("../../system/install.sh", __dir__), *sites, ask: ask)
   end
 
-  def script(path, *args)
+  def script(path, *args, ask: "no")
     env = { "MAST_PREFIX" => @prefix, "MAST_BIN" => HELPER, "PATH" => "#{@bin}:#{ENV["PATH"]}",
-            "SUDO_USER" => ENV["USER"] }
+            "SUDO_USER" => ENV["USER"], "MAST_ASK" => ask }
     out = IO.popen(env, ["bash", path, *args], err: [:child, :out], &:read)
     assert $?.success?, "#{File.basename(path)} failed: #{out}"
     out
