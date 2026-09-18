@@ -53,11 +53,16 @@ class FreshInstallTest < ShellTest::TestCase
     assert_match %r{system/install\.sh\z}, row["command"]
   end
 
-  def test_the_settings_row_offers_the_uninstall_once_it_is_there
+  # Removing Mast is three things, and the helper is only the first.
+  def test_the_settings_row_offers_the_whole_uninstall_once_it_is_there
     skip "the root helper is not installed" if helper_status.empty?
     row = JSON.parse(ipc("settingRow", "helper"))
-    assert_equal "Remove Mast's helper", row["label"]
-    assert_match %r{system/uninstall\.sh\z}, row["command"]
+    assert_equal "Remove Mast completely", row["label"]
+    lines = row["command"].lines.map(&:strip)
+    assert_equal 3, lines.length, "the helper, the widget, the record"
+    assert_match %r{\Asudo bash /.*/system/uninstall\.sh}, lines[0]
+    assert_match(/\Aomarchy plugin remove fazzledev\.mast/, lines[1])
+    assert_match %r{\Arm -rf .*fazzledev-mast}, lines[2]
   end
 
   # Either way it is copied, not run: a button that removed the helper would

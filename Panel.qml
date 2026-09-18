@@ -83,6 +83,16 @@ Panel {
     return "sudo bash " + String(Qt.resolvedUrl("system/" + which + ".sh")).replace(/^file:\/\//, "")
   }
 
+  // Removing Mast is three things, and the helper is only the first: the
+  // widget itself is a plugin, and the record is a database of your own.
+  readonly property string recordPath:
+    (Quickshell.env("XDG_DATA_HOME") || "~/.local/share") + "/fazzledev-mast"
+  readonly property string removeCommands: [
+    uninstallCommand + "    # unblocks everything, removes the helper",
+    "omarchy plugin remove " + moduleName + "    # takes the widget off the bar",
+    "rm -rf " + recordPath + "    # deletes your record, if you want it gone"
+  ].join("\n")
+
   // Copying is as far as the widget goes: it never runs one of these itself.
   // An uninstall button would be one click away from lifting every block.
   function copyCommand(text) {
@@ -425,15 +435,15 @@ Panel {
     { section: "Display" },
     { key: "greenWhenBlocked", type: "bool", label: "Green when all blocked", description: "Bar icon and switches" },
     { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" },
-    { section: "Helper" },
-    // Whichever way the helper needs to go from here. Both are copied rather
-    // than run: a button that removed the helper would be one click away from
-    // lifting every block, which is the whole thing Mast makes difficult.
+    { section: helperMissing ? "Helper" : "Removing Mast" },
+    // Whichever way Mast needs to go from here. Copied rather than run: a
+    // button that removed the helper would be one click away from lifting
+    // every block, which is the whole thing Mast makes difficult.
     helperMissing
       ? { key: "helper", type: "copy", label: "Install Mast's helper", command: installCommand,
           description: "Nothing can be blocked until this runs. It edits /etc/hosts and the browser policy, which only root may do." }
-      : { key: "helper", type: "copy", label: "Remove Mast's helper", command: uninstallCommand,
-          description: "Unblocks everything and uninstalls the helper. Run it in a terminal: a button here would be one click away from lifting every block." }
+      : { key: "helper", type: "copy", label: "Remove Mast completely", command: removeCommands,
+          description: "All three lines, in order: the helper and every block it holds, then the widget, then your record -- that last one is yours to keep. Copied, not run: a button here would be one click away from lifting every block." }
   ]
   readonly property var settingsItems: settingsRows.filter(function(r) { return !r.section })
 
