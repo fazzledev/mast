@@ -106,6 +106,13 @@ Item {
       return widget.helper
     }
 
+    // The uninstall line, copied the way the settings row copies it.
+    function copyUninstall(): string {
+      widget.testMode = true
+      widget.copyCommand(widget.uninstallCommand)
+      return widget.uninstallCommand
+    }
+
     // The copy button on the panel a fresh install shows.
     function copyInstall(): string {
       widget.testMode = true

@@ -14,7 +14,7 @@ KeyboardPanel {
   // should have to retype it. Said so for a moment afterwards.
   property bool copied: false
   function copyInstallCommand() {
-    Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(widget.installCommand) + " | wl-copy"])
+    widget.copyCommand(widget.installCommand)
     copied = true
     copiedFor.restart()
   }

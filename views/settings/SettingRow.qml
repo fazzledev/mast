@@ -11,11 +11,25 @@ CursorSurface {
   required property var widget
   property var item: ({})
   property int cursorIndex: 0
-  readonly property var value: item.key ? widget.cfg(item.key) : null
+  // A copy row has no value of its own; it hands over a command.
+  readonly property var value: item.key && item.type !== "copy" ? widget.cfg(item.key) : null
+  property bool copied: false
 
   hasCursor: widget.settingsCursorActive && widget.settingsCursor === cursorIndex
   foreground: widget.foreground
   implicitHeight: settingContent.implicitHeight + Style.spacing.rowPaddingX
+
+  function copy() {
+    widget.copyCommand(item.command)
+    copied = true
+    copiedFor.restart()
+  }
+
+  Timer {
+    id: copiedFor
+    interval: 2500
+    onTriggered: settingRowItem.copied = false
+  }
 
   MouseArea {
     anchors.fill: parent
@@ -25,7 +39,7 @@ CursorSurface {
       widget.settingsCursorActive = true
       widget.settingsCursor = settingRowItem.cursorIndex
     }
-    onClicked: widget.activateSetting(settingRowItem.item)
+    onClicked: settingRowItem.item.type === "copy" ? settingRowItem.copy() : widget.activateSetting(settingRowItem.item)
   }
 
   Row {
@@ -56,7 +70,7 @@ CursorSurface {
       Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: widget.settingDescription(settingRowItem.item)
+        text: settingRowItem.copied ? "Copied. Paste it into a terminal." : widget.settingDescription(settingRowItem.item)
         color: widget.dim
         font.family: widget.fontFamily
         font.pixelSize: Style.font.caption
@@ -68,8 +82,20 @@ CursorSurface {
       id: control
       anchors.verticalCenter: parent.verticalCenter
       width: settingRowItem.item.type === "bool" ? toggle.width
+        : settingRowItem.item.type === "copy" ? copyButton.width
         : stepper.width
       height: Math.max(toggle.height, stepper.height)
+
+      PanelActionButton {
+        id: copyButton
+        visible: settingRowItem.item.type === "copy"
+        anchors.verticalCenter: parent.verticalCenter
+        iconText: settingRowItem.copied ? "\u{F012C}" : "\u{F018F}"
+        tooltipText: "Copy the command"
+        foreground: widget.foreground
+        fontFamily: widget.fontFamily
+        onClicked: settingRowItem.copy()
+      }
 
       ToggleSwitch {
         id: toggle

@@ -75,9 +75,19 @@ Panel {
   // instead of hiding, which left a fresh install looking like
   // nothing had been added.
   property bool helperMissing: false
-  // Where system/install.sh is, for that line.
-  readonly property string installCommand:
-    "sudo bash " + String(Qt.resolvedUrl("system/install.sh")).replace(/^file:\/\//, "")
+  // The two lines that put the helper there and take it away again, naming
+  // this plugin's own directory wherever it was installed.
+  readonly property string installCommand: rootCommand("install")
+  readonly property string uninstallCommand: rootCommand("uninstall")
+  function rootCommand(which) {
+    return "sudo bash " + String(Qt.resolvedUrl("system/" + which + ".sh")).replace(/^file:\/\//, "")
+  }
+
+  // Copying is as far as the widget goes: it never runs one of these itself.
+  // An uninstall button would be one click away from lifting every block.
+  function copyCommand(text) {
+    Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(text) + " | wl-copy"])
+  }
 
   // [{ name, label, blocked }]. Empty until the first status read; the widget
   // stays hidden until then, and for good if the helper is not installed.
@@ -414,7 +424,10 @@ Panel {
     { key: "sourceNews", type: "bool", kind: "news", label: "News", description: "Researchers writing in The Conversation, shared under CC BY-ND 4.0" },
     { section: "Display" },
     { key: "greenWhenBlocked", type: "bool", label: "Green when all blocked", description: "Bar icon and switches" },
-    { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" }
+    { key: "showWeekStats", type: "bool", label: "Week stats", description: "Unblock battles won, in the panel and the unblock screen" },
+    { section: "Installed" },
+    { key: "uninstall", type: "copy", label: "Remove Mast's helper", command: uninstallCommand,
+      description: "Copies the line that unblocks everything and uninstalls the helper. Run it in a terminal: a button here would be one click away from lifting every block." }
   ]
   readonly property var settingsItems: settingsRows.filter(function(r) { return !r.section })
 

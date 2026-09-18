@@ -11,8 +11,13 @@ class FreshInstallTest < ShellTest::TestCase
   def with_no_helper
     ipc("helper", MISSING)
     wait("the widget to notice") { state["helperMissing"] ? state : nil }
-  ensure
+  end
+
+  # The real helper comes back when the test ends, not when this method
+  # returns -- an ensure here would put it back before the test looked.
+  def teardown
     ipc("helper", "real")
+    super
   end
 
   def test_the_bar_still_shows_something_without_a_helper
@@ -39,9 +44,21 @@ class FreshInstallTest < ShellTest::TestCase
     assert_equal copied, pasted
   end
 
-  def test_the_helper_coming_back_restores_the_rows
+  # The settings screen's way out, which copies rather than uninstalls: a
+  # button that removed the helper would lift every block in one click.
+  def test_the_uninstall_command_can_be_copied
+    copied = ipc("copyUninstall")
+    assert_match %r{\Asudo bash /.*/system/uninstall\.sh\z}, copied
+    pasted = wait("the clipboard") do
+      text = `wl-paste --no-newline 2>/dev/null`
+      text == copied ? text : nil
+    end
+    assert_equal copied, pasted
+  end
 
+  def test_the_helper_coming_back_restores_the_rows
     with_no_helper
+    ipc("helper", "real")
     wait("the sites to come back") { state["helperMissing"] ? nil : true }
     refute_empty JSON.parse(ipc("panel"))["rows"]
   end
