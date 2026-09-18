@@ -113,6 +113,12 @@ Item {
       return widget.uninstallCommand
     }
 
+    // A settings row as the screen would draw it, by key.
+    function settingRow(key: string): string {
+      var rows = widget.settingsRows.filter(function(r) { return r.key === key })
+      return JSON.stringify(rows.length > 0 ? rows[0] : {})
+    }
+
     // The copy button on the panel a fresh install shows.
     function copyInstall(): string {
       widget.testMode = true

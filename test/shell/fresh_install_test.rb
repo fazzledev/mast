@@ -44,8 +44,24 @@ class FreshInstallTest < ShellTest::TestCase
     assert_equal copied, pasted
   end
 
-  # The settings screen's way out, which copies rather than uninstalls: a
-  # button that removed the helper would lift every block in one click.
+  # The settings row follows the helper: offering to remove something that is
+  # not there read as nonsense on a fresh install.
+  def test_the_settings_row_offers_the_install_when_there_is_no_helper
+    with_no_helper
+    row = JSON.parse(ipc("settingRow", "helper"))
+    assert_equal "Install Mast's helper", row["label"]
+    assert_match %r{system/install\.sh\z}, row["command"]
+  end
+
+  def test_the_settings_row_offers_the_uninstall_once_it_is_there
+    skip "the root helper is not installed" if helper_status.empty?
+    row = JSON.parse(ipc("settingRow", "helper"))
+    assert_equal "Remove Mast's helper", row["label"]
+    assert_match %r{system/uninstall\.sh\z}, row["command"]
+  end
+
+  # Either way it is copied, not run: a button that removed the helper would
+  # lift every block in one click.
   def test_the_uninstall_command_can_be_copied
     copied = ipc("copyUninstall")
     assert_match %r{\Asudo bash /.*/system/uninstall\.sh\z}, copied
