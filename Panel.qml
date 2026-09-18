@@ -766,6 +766,19 @@ SitePanel {
     function toggle(): void { if (root.settingsOpen) root.settingsOpen = false; else root.openSettings("settings") }
   }
 
+  // system/install.sh asks which sites you want and hands the answer here, so
+  // the switches are the ones you picked rather than the two this ships with.
+  IpcHandler {
+    target: "fazzledev.mast.setup"
+
+    function sites(names: string): string {
+      var list = String(names).split(/[,\s]+/).filter(function(n) { return n !== "" })
+      if (list.length === 0) return "no sites named"
+      root.saveSites(list)
+      return list.join(",")
+    }
+  }
+
   SettingsWindow {
     id: settingsWindow
     widget: root

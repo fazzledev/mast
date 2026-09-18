@@ -146,6 +146,8 @@ x picks · a picks all · up/down moves · enter confirms · esc picks none" \
   for site in $chosen; do
     "$BIN" on "$site"
   done
+  # The widget ships switches for YouTube and X; make them the ones you picked.
+  picked=$(echo $chosen | tr ' ' ',')
 fi
 
 # `status` is tab-separated for the widget to parse; a person gets sentences.
@@ -167,8 +169,14 @@ echo "  Unblocking one costs a typed passage, a reason, and blocks itself again 
 # itself. sudo strips the session, so hand the shell back what it needs to find
 # it. Best effort: no shell, no widget, no harm.
 if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
-  runuser -u "$TARGET_USER" -- env \
-    XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
-    OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}" \
-    omarchy-shell -q fazzledev.mast open >/dev/null 2>&1 || true
+  as_user() {
+    runuser -u "$TARGET_USER" -- env \
+      XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
+      OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}" \
+      omarchy-shell -q "$@" >/dev/null 2>&1 || true
+  }
+  # The switches follow what you picked, instead of the two the widget ships
+  # with. Nothing picked leaves them as they are.
+  [[ -n ${picked:-} ]] && as_user fazzledev.mast.setup sites "$picked"
+  as_user fazzledev.mast open
 fi

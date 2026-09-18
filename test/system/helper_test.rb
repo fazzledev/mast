@@ -272,7 +272,21 @@ class HelperTest < Minitest::Test
     assert_match(/9 more sites are a switch away/, out)
   end
 
+  # Picking sites at install should decide which switches the bar shows.
+  def test_the_picked_sites_are_sent_to_the_widget
+    fake_gum("reddit", "twitch")
+    install(ask: "yes")
+    assert_match(/fazzledev\.mast\.setup sites reddit,twitch/, systemd_log)
+  end
+
+  def test_picking_nothing_leaves_the_switches_alone
+    fake_gum("")
+    install(ask: "yes")
+    refute_match(/mast\.setup sites/, systemd_log)
+  end
+
   # The panel that showed the install line is still open on it.
+
 
   def test_installing_asks_the_shell_to_open_the_panel
     install
