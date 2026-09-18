@@ -177,6 +177,25 @@ if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
   }
   # The switches follow what you picked, instead of the two the widget ships
   # with. Nothing picked leaves them as they are.
-  [[ -n ${picked:-} ]] && as_user fazzledev.mast.setup sites "$picked"
+  #
+  # A shell with an older Mast still loaded has not registered this target, and
+  # only picks it up when the reload finishes -- so try for a few seconds, then
+  # say what to do rather than dropping the answer silently.
+  if [[ -n ${picked:-} ]]; then
+    tries=0
+    until runuser -u "$TARGET_USER" -- env \
+            XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
+            OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}" \
+            omarchy-shell fazzledev.mast.setup sites "$picked" >/dev/null 2>&1; do
+      tries=$((tries + 1))
+      if (( tries >= 10 )); then
+        echo
+        echo "  Could not tell the bar which sites you picked -- it is still"
+        echo "  running an older Mast. Run: omarchy restart shell"
+        break
+      fi
+      sleep 0.5
+    done
+  fi
   as_user fazzledev.mast open
 fi

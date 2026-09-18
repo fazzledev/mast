@@ -30,13 +30,21 @@ class HelperTest < Minitest::Test
   def fake_systemd
     @bin = File.join(@prefix, "fakebin")
     FileUtils.mkdir_p(@bin)
-    # runuser needs root; under test the install's last step just says what it
-    # would have asked the shell to do.
-    %w[systemctl systemd-run resolvectl omarchy-shell runuser].each do |name|
+    %w[systemctl systemd-run resolvectl omarchy-shell].each do |name|
       path = File.join(@bin, name)
       File.write(path, "#!/bin/sh\necho \"#{name} $*\" >>\"$MAST_PREFIX/systemd.log\"\nexit 0\n")
       FileUtils.chmod(0o755, path)
     end
+    # runuser needs root, but it must still run what it is handed -- otherwise
+    # whatever the command does, or fails to do, never shows here.
+    runuser = <<~SH
+      #!/bin/sh
+      echo "runuser $*" >>"$MAST_PREFIX/systemd.log"
+      shift 3
+      exec "$@"
+    SH
+    File.write(File.join(@bin, "runuser"), runuser)
+    FileUtils.chmod(0o755, File.join(@bin, "runuser"))
   end
 
   def systemd_log = File.exist?(log_path) ? File.read(log_path) : ""
@@ -283,6 +291,23 @@ class HelperTest < Minitest::Test
     fake_gum("")
     install(ask: "yes")
     refute_match(/mast\.setup sites/, systemd_log)
+  end
+
+  # A bar still running an older Mast has not registered the target yet, so
+  # the call fails however long it is given.
+  def test_it_says_what_to_do_when_the_widget_cannot_be_told
+    fake_gum("reddit")
+    deaf_shell = <<~SH
+      #!/bin/sh
+      echo "omarchy-shell $*" >>"$MAST_PREFIX/systemd.log"
+      case "$*" in *setup*) exit 1 ;; esac
+      exit 0
+    SH
+    File.write(File.join(@bin, "omarchy-shell"), deaf_shell)
+    FileUtils.chmod(0o755, File.join(@bin, "omarchy-shell"))
+    out = install(ask: "yes")
+    assert_match(/omarchy restart shell/, out)
+    assert_equal ["reddit"], blocked_sites, "the block itself still happened"
   end
 
   # The panel that showed the install line is still open on it.
