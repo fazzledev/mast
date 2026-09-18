@@ -167,23 +167,16 @@ Panel {
   readonly property string barGlyph: allBlocked ? "󰻈" : "󱫯"
   readonly property color barIconColor: allBlocked ? (cfg("greenWhenBlocked") ? green : Qt.darker(barForeground, 1.55)) : urgent
 
-  // [{ id, text, source, url }]. Blank-line separated paragraphs from
-  // config/paragraphs.txt, whitespace collapsed so line wrapping in the file
-  // never has to be typed, with no source and an id from their text...
-  property var paragraphs: []
-  // ...and the book excerpts that ship in config/passages.json.
-  property var bookPassages: []
-  readonly property var allPassages: paragraphs.concat(bookPassages)
-  function passageKind(p) { return !p.url ? "paragraphs" : p.url.indexOf("theconversation.com") !== -1 ? "news" : "books" }
-  // The sources that are switched on, less the hidden passages.
-  readonly property var passages: {
-    var on = { paragraphs: cfg("sourceParagraphs"), books: cfg("sourceBooks"), news: cfg("sourceNews") }
-    var scores = stats.passages || {}
-    var list = allPassages.filter(function(p) { return on[passageKind(p)] && !(scores[p.id] && scores[p.id].hidden) })
-    // Turning every source off, or hiding everything, must not take the
-    // challenge away with it.
-    return list.length > 0 ? list : allPassages
+  // The passages to type, watched on disk, and which of them are in play.
+  Passages {
+    id: pool
+    sources: ({ paragraphs: root.cfg("sourceParagraphs"), books: root.cfg("sourceBooks"), news: root.cfg("sourceNews") })
+    scores: root.stats.passages || ({})
   }
+
+  readonly property alias allPassages: pool.all
+  readonly property alias passages: pool.available
+  function passageKind(passage) { return pool.kind(passage) }
 
   visible: installed
   implicitWidth: installed ? button.implicitWidth : 0
@@ -197,31 +190,8 @@ Panel {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   }
 
-  // How likely a passage is to come up: its battles won against lost, with
-  // one of each assumed so a new passage starts even and no passage ever
-  // drops to nothing.
-  function passageWeight(p) {
-    var score = (stats.passages || {})[p.id]
-    return score ? (score.won + 1) / (score.won + score.lost + 2) : 0.5
-  }
-
-  // A random index, weighted towards winners, never the passage on screen
-  // when there is a choice.
-  function randomPassageIndex() {
-    if (passages.length === 0) return -1
-    var total = 0
-    var weights = passages.map(function(p) {
-      var w = passages.length > 1 && p.text === confirmPhrase ? 0 : passageWeight(p)
-      total += w
-      return w
-    })
-    var roll = Math.random() * total
-    for (var i = 0; i < weights.length; i++) {
-      roll -= weights[i]
-      if (roll < 0) return i
-    }
-    return weights.length - 1
-  }
+  // Never the passage on screen, when there is a choice.
+  function randomPassageIndex() { return pool.randomIndex(confirmPhrase) }
 
   // Never shows the passage again. Its record stays, and the History tab can
   // bring it back.
@@ -275,7 +245,12 @@ Panel {
 
   // Test mode (see the `fazzledev.mast.test` IPC target below) runs in the
   // test environment, which keeps its attempts in a database of their own.
-  property bool testMode: false
+property bool testMode: false
+
+// What test mode reaches into; see TestHarness.qml.
+readonly property alias overlayView: overlay
+readonly property alias settingsView: settingsWindow
+readonly property alias siteRows: siteRepeater
 
   // The record: every event goes through here, and the numbers come back.
   Recorder {
@@ -475,7 +450,7 @@ Panel {
 
   function settingDescription(item) {
     if (!item.kind) return item.description
-    var count = allPassages.filter(function(p) { return passageKind(p) === item.kind }).length
+    var count = pool.count(item.kind)
     return item.description + "  ·  " + count + (count === 1 ? " passage" : " passages")
   }
 
@@ -647,167 +622,10 @@ Panel {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
-  // Test mode, for checking the overlay end to end without a real unblock:
-  //
-  //   omarchy-shell fazzledev.mast.test start youtube   open an attempt
-  //   omarchy-shell fazzledev.mast.test type 12          type the passage, 12 ms a character
-  //   omarchy-shell fazzledev.mast.test step 1           next passage (-1 previous)
-  //   omarchy-shell fazzledev.mast.test shuffle          a random one
-  //   omarchy-shell fazzledev.mast.test hide              never show this passage again
-  //   omarchy-shell fazzledev.mast.test reason "..."     answer why
-  //   omarchy-shell fazzledev.mast.test answer no        or yes, or esc
-  //   omarchy-shell fazzledev.mast.test state            what the overlay shows, as JSON
-  //   omarchy-shell fazzledev.mast.test setting coolOffSeconds 0   for this test run only
-  //   omarchy-shell fazzledev.mast.test settings history  the settings screen, on test data
-  //   omarchy-shell fazzledev.mast.test stop             close it and leave test mode
-  //
-  // Typing is fed into the field from here, never through the keyboard. The
-  // overlay and settings screen take no keyboard focus, the overlay says TEST
-  // MODE, everything is recorded in the test database, and "yes" unblocks
-  // nothing. test/shell drives this end to end.
-  IpcHandler {
-    target: "fazzledev.mast.test"
-
-    function start(site: string): string {
-      if (root.confirmingSite !== null && !root.testMode) return "a real attempt is open"
-      root.testMode = true
-      var found = root.sites.filter(function(s) { return s.name === site })[0]
-      root.beginAttempt(found || { name: site, label: site, blocked: true, relockAt: 0 })
-      return root.confirmPhrase
-    }
-
-    function type(msPerChar: int): string {
-      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
-      testTyper.interval = Math.max(1, msPerChar)
-      testTyper.start()
-      return "typing " + (root.confirmPhrase.length - overlay.typed) + " characters"
-    }
-
-    function reason(text: string): string {
-      if (!root.testMode || !root.confirmAsking) return "not asking"
-      overlay.reasonText = text
-      return "ok"
-    }
-
-    function step(delta: int): string {
-      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
-      testTyper.stop()
-      root.stepPassage(delta)
-      return root.confirmId
-    }
-
-    function shuffle(): string {
-      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
-      testTyper.stop()
-      root.shufflePassage()
-      return root.confirmId
-    }
-
-    // "true", "false" or a number.
-    function setting(key: string, value: string): string {
-      if (!(key in root.settingDefaults)) return "no setting " + key
-      var next = Object.assign({}, root.testOverrides)
-      next[key] = value === "true" ? true : value === "false" ? false : Number(value)
-      root.testOverrides = next
-      return "ok"
-    }
-
-    function settings(tab: string): string {
-      if (root.confirmingSite !== null && !root.testMode) return "a real attempt is open"
-      root.testMode = true
-      root.openSettings(tab)
-      return "ok"
-    }
-
-    function hide(): string {
-      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) return "not typing"
-      var hidden = root.confirmId
-      root.hideCurrentPassage()
-      return "hid " + hidden + ", now " + root.confirmId
-    }
-
-    function answer(choice: string): string {
-      if (!root.testMode || root.confirmingSite === null) return "no test attempt"
-      testTyper.stop()
-      if (choice === "yes") root.finishConfirm()
-      else root.cancelConfirm()
-      return root.confirmingSite === null ? "closed" : "still open: " + (root.reasonMissing ? "reason missing" : root.coolOffLeft > 0 ? "yes available in " + root.coolOffLeft + "s" : "?")
-    }
-
-    // What the history tab shows, once the settings screen is open on it.
-    function history(): string {
-      return JSON.stringify(settingsWindow.visible ? settingsWindow.historyTab.rows() : { tiles: [], attempts: [], passages: [] })
-    }
-
-    // The panel's own rows, which nothing else can see into.
-    function panel(): string {
-      root.testMode = true
-      root.open()
-      var rows = []
-      for (var i = 0; i < siteRepeater.count; i++) {
-        var row = siteRepeater.itemAt(i)
-        if (!row) continue
-        rows.push({ label: row.label, state: row.stateText, icon: row.icon,
-                    iconColor: String(row.iconColor), labelColor: String(row.labelColor) })
-      }
-      return JSON.stringify({ opened: root.opened, rows: rows,
-                              foreground: String(root.foreground), dim: String(root.dim),
-                              green: String(root.green), battles: root.battlesText() })
-    }
-
-    function state(): string {
-      return JSON.stringify({
-        testMode: root.testMode,
-        open: root.confirmingSite !== null,
-        overlayVisible: overlay.visible,
-        site: root.confirmingSite ? root.confirmingSite.name : null,
-        attempt: root.attemptId,
-        asking: root.confirmAsking,
-        progress: overlay.typed + "/" + root.confirmPhrase.length,
-        passage: root.confirmId,
-        source: root.confirmSource,
-        url: root.confirmUrl,
-        license: root.confirmLicense,
-        coolOffLeft: root.coolOffLeft,
-        dbPending: db.pending,
-        readsPending: db.reading,
-        settingsOpen: root.settingsOpen,
-        settingsVisible: settingsWindow.visible,
-        settingsTab: root.settingsTab,
-        historyAttempts: root.historyData.attempts.length,
-        historyPassages: root.historyData.passages.length,
-        passages: root.passages.length + " of " + root.allPassages.length,
-        wpm: overlay.wpm,
-        typos: overlay.typos,
-        summary: root.typedSummary,
-        reasonMissing: root.reasonMissing,
-        stats: root.stats
-      })
-    }
-
-    function stop(): string {
-      testTyper.stop()
-      if (root.testMode && root.confirmingSite !== null) root.cancelConfirm()
-      if (root.testMode) {
-        root.settingsOpen = false
-        root.close()
-      }
-      root.testOverrides = {}
-      root.testMode = false
-      root.refreshStats()
-      return "ok"
-    }
-  }
-
-  // Test mode's typist: one character a tick, through the same onTextChanged
-  // path a keystroke takes.
-  Timer {
-    id: testTyper
-    repeat: true
-    onTriggered: {
-      if (!root.testMode || root.confirmingSite === null || root.confirmAsking) { stop(); return }
-      overlay.typeCharacter()
-    }
+  // Test mode, for checking the widget end to end without a real unblock,
+  // over an IPC target of its own. See TestHarness.qml and test/shell.
+  TestHarness {
+    widget: root
   }
 
   FileView {
@@ -819,36 +637,6 @@ Panel {
       var m = String(text() || "").match(/^\s*green\s*=\s*"(#[0-9a-fA-F]{6,8})"/m)
       if (m) root.green = m[1]
     }
-  }
-
-  FileView {
-    path: String(Qt.resolvedUrl("config/paragraphs.txt")).replace(/^file:\/\//, "")
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.paragraphs = String(text() || "").split(/\n\s*\n/)
-      .map(function(p) { return root.normalise(p).trim() })
-      .filter(function(p) { return p !== "" })
-      .map(function(p) { return { id: "paragraph-" + Qt.md5(p), text: p, source: "", url: "" } })
-    onLoadFailed: root.paragraphs = []
-  }
-
-  FileView {
-    path: String(Qt.resolvedUrl("config/passages.json")).replace(/^file:\/\//, "")
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: {
-      var list = []
-      try { list = JSON.parse(text() || "[]") } catch (e) {}
-      root.bookPassages = (Array.isArray(list) ? list : []).filter(function(p) {
-        return p && p.id && typeof p.text === "string" && p.text.trim() !== ""
-      }).map(function(p) {
-        return { id: String(p.id), text: root.normalise(p.text).trim(), source: String(p.source || ""), url: String(p.url || ""),
-                 license: String(p.license || ""), licenseUrl: String(p.license_url || "") }
-      })
-    }
-    onLoadFailed: root.bookPassages = []
   }
 
   Timer {
