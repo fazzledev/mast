@@ -4,6 +4,7 @@
   "name": "Mast",
   "version": "3.2.0",
   "author": "fazzledev",
+  "license": "MIT",
   "description": "Tie yourself to the mast: block distracting sites, and make unblocking one cost a typed passage, a reason, and a relock.",
   "kinds": [
     "bar-widget"

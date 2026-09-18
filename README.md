@@ -60,6 +60,11 @@ switching, the question page and the settings screen, checked against the
 test database. It never touches the keyboard or the real record, but the
 overlay does cover the screen while it runs. See `test/shell/shell_helper.rb`.
 
+## Licence
+
+MIT, except the passages: the book excerpts are public domain, and The
+Conversation's are CC BY-ND 4.0 with credit. See LICENSE.
+
 ## Passages and credit
 
 The book passages are excerpts from public domain texts on Project Gutenberg,
