@@ -61,7 +61,7 @@ class FreshInstallTest < ShellTest::TestCase
     lines = row["command"].lines.map(&:strip)
     assert_equal 3, lines.length, "the helper, the widget, the record"
     assert_match %r{\Asudo bash /.*/system/uninstall\.sh}, lines[0]
-    assert_match(/\Aomarchy plugin remove fazzledev\.mast/, lines[1])
+    assert_match(/\Aomarchy plugin remove dev\.fazzle\.mast/, lines[1])
     assert_match %r{\Arm -rf .*fazzledev-mast}, lines[2]
   end
 

@@ -186,7 +186,7 @@ if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
     until runuser -u "$TARGET_USER" -- env \
             XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
             OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}" \
-            omarchy-shell fazzledev.mast.setup sites "$picked" >/dev/null 2>&1; do
+            omarchy-shell dev.fazzle.mast.setup sites "$picked" >/dev/null 2>&1; do
       tries=$((tries + 1))
       if (( tries >= 10 )); then
         echo
@@ -197,7 +197,7 @@ if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
       sleep 0.5
     done
   fi
-  as_user fazzledev.mast open
+  as_user dev.fazzle.mast open
 
   # Blocking only stops new requests, so a video already playing plays on.
   # Flipping the same switch in the bar closes those windows; an install that

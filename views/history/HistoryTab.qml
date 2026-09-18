@@ -9,7 +9,7 @@ Column {
   // The widget whose record this is.
   required property var widget
 
-  // What the rows show, for `omarchy-shell fazzledev.mast.test history`.
+  // What the rows show, for `omarchy-shell dev.fazzle.mast.test history`.
   function rows() {
     var read = function(repeater) {
       var list = []

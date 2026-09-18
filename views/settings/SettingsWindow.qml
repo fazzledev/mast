@@ -8,7 +8,7 @@ import qs.Ui
 import "../history"
 
 // The full-screen settings and history screen: what the gear in the panel
-// opens, and `omarchy-shell fazzledev.mast.settings open`. Everything it
+// opens, and `omarchy-shell dev.fazzle.mast.settings open`. Everything it
 // shows and changes lives on the widget (Panel.qml), which it is given as
 // `root`.
 PanelWindow {

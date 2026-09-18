@@ -12,24 +12,24 @@ Item {
 
   // Test mode, for checking the overlay end to end without a real unblock:
   //
-  //   omarchy-shell fazzledev.mast.test start youtube   open an attempt
-  //   omarchy-shell fazzledev.mast.test type 12          type the passage, 12 ms a character
-  //   omarchy-shell fazzledev.mast.test step 1           next passage (-1 previous)
-  //   omarchy-shell fazzledev.mast.test shuffle          a random one
-  //   omarchy-shell fazzledev.mast.test hide              never show this passage again
-  //   omarchy-shell fazzledev.mast.test reason "..."     answer why
-  //   omarchy-shell fazzledev.mast.test answer no        or yes, or esc
-  //   omarchy-shell fazzledev.mast.test state            what the overlay shows, as JSON
-  //   omarchy-shell fazzledev.mast.test setting coolOffSeconds 0   for this test run only
-  //   omarchy-shell fazzledev.mast.test settings history  the settings screen, on test data
-  //   omarchy-shell fazzledev.mast.test stop             close it and leave test mode
+  //   omarchy-shell dev.fazzle.mast.test start youtube   open an attempt
+  //   omarchy-shell dev.fazzle.mast.test type 12          type the passage, 12 ms a character
+  //   omarchy-shell dev.fazzle.mast.test step 1           next passage (-1 previous)
+  //   omarchy-shell dev.fazzle.mast.test shuffle          a random one
+  //   omarchy-shell dev.fazzle.mast.test hide              never show this passage again
+  //   omarchy-shell dev.fazzle.mast.test reason "..."     answer why
+  //   omarchy-shell dev.fazzle.mast.test answer no        or yes, or esc
+  //   omarchy-shell dev.fazzle.mast.test state            what the overlay shows, as JSON
+  //   omarchy-shell dev.fazzle.mast.test setting coolOffSeconds 0   for this test run only
+  //   omarchy-shell dev.fazzle.mast.test settings history  the settings screen, on test data
+  //   omarchy-shell dev.fazzle.mast.test stop             close it and leave test mode
   //
   // Typing is fed into the field from here, never through the keyboard. The
   // overlay and settings screen take no keyboard focus, the overlay says TEST
   // MODE, everything is recorded in the test database, and "yes" unblocks
   // nothing. test/shell drives this end to end.
   IpcHandler {
-    target: "fazzledev.mast.test"
+    target: "dev.fazzle.mast.test"
 
     function start(site: string): string {
       if (widget.confirmingSite !== null && !widget.testMode) return "a real attempt is open"

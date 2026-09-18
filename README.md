@@ -36,7 +36,7 @@ Nothing else, and no network at runtime.
 
 ```sh
 omarchy plugin add https://github.com/fazzledev/mast --enable
-sudo bash ~/.config/omarchy/plugins/fazzledev.mast/system/install.sh
+sudo bash ~/.config/omarchy/plugins/dev.fazzle.mast/system/install.sh
 ```
 
 The second step installs `mast`, the root helper that edits `/etc/hosts` and the
@@ -56,7 +56,7 @@ rake passages:build           # write config/passage_picks.yml to config/passage
 ```
 
 The Ruby side is laid out like a Rails app without the gems; see
-`lib/mast.rb`. The QML follows it: `Panel.qml` is the widget, `Recorder.qml`
+`lib/mast.rb`. The QML follows it: `BarWidget.qml` is the widget, `Recorder.qml`
 is everything that reaches the record, and `views/` holds a folder per
 screen -- panel, settings, history, unblock -- with the rows each is built
 from. `rake test` also covers the root helper: `test/system` runs
@@ -65,7 +65,7 @@ from. `rake test` also covers the root helper: `test/system` runs
 relock cap and `restore` are checked without root.
 
 `rake test:shell` drives the widget in the running shell
-through its `fazzledev.mast.test` IPC target: the overlay, typing, hiding,
+through its `dev.fazzle.mast.test` IPC target: the overlay, typing, hiding,
 switching, the question page and the settings screen, checked against the
 test database. It never touches the keyboard or the real record, but the
 overlay does cover the screen while it runs. See `test/shell/shell_helper.rb`.

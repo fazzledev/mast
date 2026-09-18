@@ -1,5 +1,5 @@
 # End-to-end tests against the running Omarchy shell, through the widget's
-# test mode (the fazzledev.mast.test IPC target in Panel.qml). They cover what
+# test mode (the dev.fazzle.mast.test IPC target in BarWidget.qml). They cover what
 # the unit tests cannot: that the QML loads, opens the overlay and the
 # settings screen, and sends the right events to the database.
 #
@@ -20,8 +20,8 @@ require "time"
 
 module ShellTest
   ROOT = File.expand_path("../..", __dir__)
-  PLUGIN = File.expand_path("~/.config/omarchy/plugins/fazzledev.mast")
-  TARGET = "fazzledev.mast.test"
+  PLUGIN = File.expand_path("~/.config/omarchy/plugins/dev.fazzle.mast")
+  TARGET = "dev.fazzle.mast.test"
   DB = File.join(ENV["XDG_DATA_HOME"] || File.expand_path("~/.local/share"), "fazzledev-mast", "test.sqlite3")
 
   module_function
@@ -94,7 +94,7 @@ class ShellTest::TestCase < Minitest::Test
   # this a broken panel still passes.
   def assert_no_shell_errors(since)
     lines = `journalctl --user --since "#{since.strftime("%Y-%m-%d %H:%M:%S")}" --output cat`.lines
-    complaints = lines.grep(/fazzledev\.mast|mast-db:/).grep(/Error|error:|is not a type|Unable to assign|Required property/)
+    complaints = lines.grep(/dev\.fazzle\.mast|mast-db:/).grep(/Error|error:|is not a type|Unable to assign|Required property/)
     assert_empty complaints.map(&:strip).uniq.first(5), "the shell complained"
   end
 

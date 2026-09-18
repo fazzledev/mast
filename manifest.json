@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "fazzledev.mast",
+  "id": "dev.fazzle.mast",
   "name": "Mast",
   "version": "3.2.0",
   "author": "fazzledev",
@@ -10,7 +10,7 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Mast",

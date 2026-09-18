@@ -284,7 +284,7 @@ class HelperTest < Minitest::Test
   def test_the_picked_sites_are_sent_to_the_widget
     fake_gum("reddit", "twitch")
     install(ask: "yes")
-    assert_match(/fazzledev\.mast\.setup sites reddit,twitch/, systemd_log)
+    assert_match(/dev\.fazzle\.mast\.setup sites reddit,twitch/, systemd_log)
   end
 
   def test_picking_nothing_leaves_the_switches_alone
@@ -336,7 +336,7 @@ class HelperTest < Minitest::Test
 
   def test_installing_asks_the_shell_to_open_the_panel
     install
-    assert_match(/omarchy-shell -q fazzledev\.mast open/, systemd_log)
+    assert_match(/omarchy-shell -q dev\.fazzle\.mast open/, systemd_log)
   end
 
   # Rather than assuming the two the widget ships switches for.

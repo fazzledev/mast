@@ -12,7 +12,7 @@ CursorSurface {
   property int rowIndex: 0
   readonly property bool pending: site !== null && widget.pendingSite === site.name
   readonly property bool blocked: site !== null && site.blocked
-  // What is on screen, for `omarchy-shell fazzledev.mast.test panel`.
+  // What is on screen, for `omarchy-shell dev.fazzle.mast.test panel`.
   readonly property string label: siteLabel.text
   readonly property string stateText: siteState.text
   readonly property string icon: siteIcon.text

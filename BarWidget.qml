@@ -61,14 +61,14 @@ import "views/unblock"
 // would then forget about, nor lifts one.
 //
 // This file is the widget: the state, the settings, the bar icon and the
-// panel, and the IPC targets -- including fazzledev.mast.test, which drives
+// panel, and the IPC targets -- including dev.fazzle.mast.test, which drives
 // the whole thing without a keyboard for test/shell. The screens are in
 // views/, a folder each for the panel's rows, the settings, the history and
 // the unblock overlay; Recorder.qml is everything that reaches the record.
 Panel {
   id: root
-  moduleName: "fazzledev.mast"
-  ipcTarget: "fazzledev.mast"
+  moduleName: "dev.fazzle.mast"
+  ipcTarget: "dev.fazzle.mast"
 
   property string helper: "/usr/local/bin/mast"
   // Sites whose browser tab was still open when the block went on: blocking
@@ -283,7 +283,7 @@ Panel {
     if (cfg("allowSwitching") && passages.length > 1) showPassage(randomPassageIndex())
   }
 
-  // Test mode (see the `fazzledev.mast.test` IPC target below) runs in the
+  // Test mode (see the `dev.fazzle.mast.test` IPC target below) runs in the
   // test environment, which keeps its attempts in a database of their own.
   property bool testMode: false
 
@@ -790,10 +790,10 @@ SitePanel {
 }
 
   // ------------------------------------------------------ settings and history
-  // `omarchy-shell fazzledev.mast.settings open` (or `history`), for a
+  // `omarchy-shell dev.fazzle.mast.settings open` (or `history`), for a
   // keybinding.
   IpcHandler {
-    target: "fazzledev.mast.settings"
+    target: "dev.fazzle.mast.settings"
     function open(): void { root.openSettings("settings") }
     function history(): void { root.openSettings("history") }
     function close(): void { root.settingsOpen = false }
@@ -803,7 +803,7 @@ SitePanel {
   // system/install.sh asks which sites you want and hands the answer here, so
   // the switches are the ones you picked rather than the two this ships with.
   IpcHandler {
-    target: "fazzledev.mast.setup"
+    target: "dev.fazzle.mast.setup"
 
     function sites(names: string): string {
       var list = String(names).split(/[,\s]+/).filter(function(n) { return n !== "" })
