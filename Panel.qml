@@ -22,10 +22,12 @@ import "views/unblock"
 // unblocked, and only on a yes raises the shell's polkit dialog. A block you
 // can lift with one stray click is not much of a block.
 //
-// Passages come from two pools mixed together: the hand-written ones in
-// config/paragraphs.txt, and the 300 excerpts from public domain books that
-// ship in config/passages.json, each shown with its source and a link. The
-// ones that win battles come up more often, and any can be hidden for good.
+// Passages come from three pools mixed together: the ten hand-written ones in
+// config/paragraphs.txt, and, in config/passages.json, 300 excerpts from
+// public domain books and 43 from articles in The Conversation, shared under
+// CC BY-ND 4.0. Each is shown with its source, a link, and its licence where
+// it has one; any pool can be turned off. The ones that win battles come up
+// more often, and any passage can be hidden for good.
 //
 // Before the yes/no, the question page shows the passage again with how the
 // typing went, and asks why you want the site. Each attempt -- the passages
@@ -36,11 +38,11 @@ import "views/unblock"
 //
 // Most of this can be tuned from a settings screen (the gear in the panel
 // header, or S): passage switching, the live wpm, how many words the why
-// needs, a wait before yes, how long an unblock lasts, which passage sources
-// are used and whether Claude ranks them, and the display extras. They are
-// ordinary widget settings, declared in manifest.json and saved to shell.json.
-// The same screen has a History tab: the week's numbers, recent attempts with
-// their reasons, and how each passage has fared.
+// needs, a wait before yes, how long an unblock lasts, which passage pools
+// are used, and the display extras. They are ordinary widget settings,
+// declared in manifest.json and saved to shell.json. The same screen has a
+// History tab: the week's numbers, recent attempts with their reasons, and
+// how each passage has fared.
 //
 // Every unblock is temporary: the helper arms a systemd timer that blocks the
 // site again, and each row counts down to it.
@@ -56,6 +58,12 @@ import "views/unblock"
 // row carries a remove button that takes it back out -- plus any that are blocked or
 // counting down, so taking a site out of the setting never hides a block you
 // would then forget about, nor lifts one.
+//
+// This file is the widget: the state, the settings, the bar icon and the
+// panel, and the IPC targets -- including fazzledev.mast.test, which drives
+// the whole thing without a keyboard for test/shell. The screens are in
+// views/, a folder each for the panel's rows, the settings, the history and
+// the unblock overlay; Recorder.qml is everything that reaches the record.
 Panel {
   id: root
   moduleName: "fazzledev.mast"
