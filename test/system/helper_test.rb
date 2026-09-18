@@ -310,6 +310,27 @@ class HelperTest < Minitest::Test
     assert_equal ["reddit"], blocked_sites, "the block itself still happened"
   end
 
+  # Blocking a site while a video is playing should close it, the way the
+  # switch in the bar does.
+  def test_installing_closes_windows_for_what_it_blocked
+    fake_gum("youtube")
+    # A Hyprland instance to find, inside the prefix: the real session must
+    # never be touched by a test.
+    FileUtils.mkdir_p(File.join(@prefix, "run", "user", Process.uid.to_s, "hypr", "abc123"))
+    File.write(File.join(@bin, "hyprctl"), "#!/bin/sh\necho \"hyprctl $*\" >>\"$MAST_PREFIX/systemd.log\"\necho '[]'\n")
+    FileUtils.chmod(0o755, File.join(@bin, "hyprctl"))
+    install(ask: "yes")
+    assert_match(/close-open youtube/, systemd_log)
+    assert_match(/hyprctl clients/, systemd_log, "it really ran, rather than only being asked for")
+  end
+
+  def test_installing_leaves_windows_alone_when_nothing_was_picked
+    fake_gum("")
+    FileUtils.mkdir_p(File.join(@prefix, "run", "user", Process.uid.to_s, "hypr", "abc123"))
+    install(ask: "yes")
+    refute_match(/close-open/, systemd_log)
+  end
+
   # The panel that showed the install line is still open on it.
 
 

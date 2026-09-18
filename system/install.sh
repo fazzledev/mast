@@ -198,4 +198,19 @@ if command -v omarchy-shell >/dev/null && [[ -n $TARGET_USER ]]; then
     done
   fi
   as_user fazzledev.mast open
+
+  # Blocking only stops new requests, so a video already playing plays on.
+  # Flipping the same switch in the bar closes those windows; an install that
+  # blocked something should not behave differently. hyprctl needs the
+  # instance, which sudo drops along with the rest of the session.
+  if [[ -n ${picked:-} ]]; then
+    hypr_dir="$PREFIX/run/user/$(id -u "$TARGET_USER")/hypr"
+    instance=$(ls -t "$hypr_dir" 2>/dev/null | head -n1 || true)
+    if [[ -n $instance ]]; then
+      runuser -u "$TARGET_USER" -- env \
+        XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
+        HYPRLAND_INSTANCE_SIGNATURE="$instance" \
+        bash "$SRC_DIR/../bin/close-open" ${picked//,/ } >/dev/null 2>&1 || true
+    fi
+  fi
 fi
