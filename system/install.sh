@@ -131,9 +131,13 @@ done
 asked=${MAST_ASK:-auto}
 if [[ $# -eq 0 && $asked != no ]] && { [[ $asked == yes ]] || [[ -t 0 ]]; } &&
    command -v gum >/dev/null && [[ -z $("$BIN" status | awk -F'\t' '$3 == 1 { print $1 }') ]]; then
+  # The hint goes in gum's own header: anything echoed before it is wiped by
+  # the picker taking over the screen, so nobody ever reads it.
   say "Which sites should Mast block?"
-  echo "Space picks, Enter confirms. None is fine -- the switches are in the bar either way."
-  chosen=$(gum choose --no-limit --height 12 $("$BIN" status | cut -f1) || true)
+  chosen=$(gum choose --no-limit --height 12 \
+    --header "space or x picks · a picks all · enter confirms · esc picks none" \
+    --cursor "> " --selected-prefix "[x] " --unselected-prefix "[ ] " \
+    $("$BIN" status | cut -f1) || true)
   for site in $chosen; do
     "$BIN" on "$site"
   done
