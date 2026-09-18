@@ -19,19 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The passages Mast ships with are not covered by the licence above; each is
-under its own terms, and config/passages.json carries them per passage:
-
-  config/paragraphs.txt   written for Mast, MIT with the rest.
-
-  Books                   excerpts from public domain texts on Project
-                          Gutenberg, listed in config/books.yml. Public domain
-                          in the United States; check your own country.
-
-  The Conversation        excerpts from articles listed in config/articles.yml,
-                          shared under CC BY-ND 4.0 with their authors, title
-                          and link, unaltered but for typography:
-                          https://creativecommons.org/licenses/by-nd/4.0/

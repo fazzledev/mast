@@ -63,7 +63,7 @@ overlay does cover the screen while it runs. See `test/shell/shell_helper.rb`.
 ## Licence
 
 MIT, except the passages: the book excerpts are public domain, and The
-Conversation's are CC BY-ND 4.0 with credit. See LICENSE.
+Conversation's are CC BY-ND 4.0 with credit. See LICENSE and NOTICE.
 
 ## Passages and credit
 
